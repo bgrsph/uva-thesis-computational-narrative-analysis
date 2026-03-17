@@ -1,3 +1,7 @@
 numpy
 pandas
 jupyterlab
+tell_me_again
+seaborn
+matplotlib
+nltk
