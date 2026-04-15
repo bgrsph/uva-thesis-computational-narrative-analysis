@@ -210,3 +210,9 @@ __marimo__/
 data/
 
 .DS_Store
+
+docs/*
+
+resources/*
+
+.claude/*
