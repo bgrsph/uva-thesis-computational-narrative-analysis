@@ -30,9 +30,9 @@ from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, Tenso
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 
+from torch.optim import AdamW  # PATCHED: moved from transformers to torch.optim
 from transformers import (
     WEIGHTS_NAME,
-    AdamW,
     BertConfig,
     BertForTokenClassification,
     BertTokenizer,
@@ -323,7 +323,8 @@ def load_and_cache_examples(args, tokenizer, labels, pad_token_label_id, mode):
     )
     if os.path.exists(cached_features_file) and not args.overwrite_cache:
         logger.info("Loading features from cached file %s", cached_features_file)
-        features = torch.load(cached_features_file)
+        # PATCHED: torch>=2.6 defaults weights_only=True, but cached features contain custom objects
+        features = torch.load(cached_features_file, weights_only=False)
     else:
         logger.info("Creating features from dataset file at %s", args.data_dir)
         examples = read_examples_from_file(args.data_dir, mode)
@@ -552,7 +553,8 @@ def main():
             global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
             model = model_class.from_pretrained(checkpoint)
             model.to(args.device)
-            result, _ = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="dev", prefix=global_step)
+            # PATCHED: original script passed mode="dev", but MAVEN ships valid.jsonl (not dev.jsonl); line 184's during-training eval already uses mode="valid". Aligning to "valid" keeps naming consistent and lets --do_eval reuse the cached_valid_* features file.
+            result, _ = evaluate(args, model, tokenizer, labels, pad_token_label_id, mode="valid", prefix=global_step)
             if global_step:
                 result = {"{}_{}".format(global_step, k): v for k, v in result.items()}
             results.update(result)

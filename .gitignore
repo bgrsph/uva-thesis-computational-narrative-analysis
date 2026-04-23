@@ -216,3 +216,4 @@ docs/*
 resources/*
 
 .claude/*
+.venv-maven-train/
