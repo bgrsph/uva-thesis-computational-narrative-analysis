@@ -5,9 +5,9 @@
 # on MAVEN. Mirrors section 1.2 of notebooks/pipeline.ipynb.
 #
 # Pinning rationale (do not change without reading the notebook):
-#   - venv lives in models/bert_crf/.venv-maven-train (colocated with code)
-#   - Python must be 3.9.x; transformers==4.18.0 has no wheels for >=3.11
-#   - torch / transformers / tokenizers pinned for arm64 wheel availability
+#   - venv lives at <repo>/.venv-maven-train (project-root level)
+#   - Python >= 3.10 (venv that produced the saved checkpoint was built with 3.14.2)
+#   - All deps pinned in models/bert_crf/requirements.txt; install via -r
 #
 # Usage (from anywhere):
 #   bash models/bert_crf/train_bert_crf_on_maven.sh            # setup + train + eval
@@ -45,7 +45,7 @@ done
 # ---------------------------------------------------------------------------
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 REPO_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
-VENV_DIR="$SCRIPT_DIR/.venv-maven-train"
+VENV_DIR="$REPO_ROOT/.venv-maven-train"
 DATA_DIR="$REPO_ROOT/data/raw/MAVEN"
 OUTPUT_DIR="$REPO_ROOT/data/intermediate/models/bert_crf"
 LOG_DIR="$OUTPUT_DIR/logs"
@@ -94,32 +94,20 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Locate a Python 3.9 interpreter
+# Locate a Python >= 3.10 interpreter
 # ---------------------------------------------------------------------------
-find_python39() {
-    # Preferred order:
-    #   1. /usr/bin/python3 (Apple CommandLineTools on macOS ships 3.9.6)
-    #   2. python3.9 on PATH
-    #   3. python3 on PATH (only accepted if it reports 3.9.x)
-    #   4. py -3.9 (Windows launcher, if available)
-    local candidates=()
-    if [ "$OS" = "macos" ] && [ -x "/usr/bin/python3" ]; then
-        candidates+=("/usr/bin/python3")
-    fi
-    candidates+=("python3.9" "python3")
-    if [ "$OS" = "windows" ] && command -v py >/dev/null 2>&1; then
-        # `py -3.9` is a launcher invocation, not a single binary — handle specially
-        if py -3.9 -c "import sys; assert sys.version_info[:2]==(3,9)" >/dev/null 2>&1; then
-            echo "py -3.9"
-            return 0
-        fi
-    fi
+find_python() {
+    # Accept any python3 reporting >= 3.10. The reference venv that produced
+    # the saved checkpoint was built with 3.14.2, but the pinned wheels in
+    # requirements.txt resolve cleanly on any 3.10+ interpreter.
+    local candidates=("python3.14" "python3.13" "python3.12" "python3.11" "python3.10" "python3")
 
-    local c v
+    local c v_major v_minor
     for c in "${candidates[@]}"; do
         if command -v "$c" >/dev/null 2>&1; then
-            v="$("$c" -c 'import sys; print("%d.%d"%sys.version_info[:2])' 2>/dev/null || true)"
-            if [ "$v" = "3.9" ]; then
+            v_major="$("$c" -c 'import sys; print(sys.version_info[0])' 2>/dev/null || echo 0)"
+            v_minor="$("$c" -c 'import sys; print(sys.version_info[1])' 2>/dev/null || echo 0)"
+            if [ "$v_major" = "3" ] && [ "$v_minor" -ge 10 ] 2>/dev/null; then
                 echo "$c"
                 return 0
             fi
@@ -132,48 +120,30 @@ setup_venv() {
     if [ -x "$VENV_PY" ]; then
         local existing_v
         existing_v="$("$VENV_PY" -c 'import sys; print("%d.%d"%sys.version_info[:2])' 2>/dev/null || true)"
-        if [ "$existing_v" = "3.9" ]; then
-            echo "[venv] reusing existing venv at $VENV_DIR (python $existing_v)"
-            return 0
-        else
-            echo "[venv] existing venv reports python '$existing_v' (want 3.9); removing and recreating"
-            rm -rf "$VENV_DIR"
-        fi
+        echo "[venv] reusing existing venv at $VENV_DIR (python $existing_v)"
+        return 0
     fi
 
-    echo "[venv] locating a Python 3.9 interpreter..."
-    local py39
-    if ! py39="$(find_python39)"; then
+    echo "[venv] locating a Python >= 3.10 interpreter..."
+    local py
+    if ! py="$(find_python)"; then
         cat >&2 <<EOF
-[venv] ERROR: no Python 3.9 interpreter found.
+[venv] ERROR: no Python >= 3.10 interpreter found.
 
-  transformers==4.18.0 has no wheels for Python >= 3.11. You must install
-  Python 3.9 before running this script.
-
-  macOS:    xcode-select --install     # ships /usr/bin/python3 == 3.9.x
-            or: brew install python@3.9
-  Linux:    sudo apt-get install python3.9 python3.9-venv
-            or use pyenv: pyenv install 3.9.19
-  Windows:  https://www.python.org/downloads/release/python-3919/
-            (install with "py launcher" checked, then re-run under Git Bash)
+  Install Python 3.10 or newer (3.14 recommended for exact reproducibility):
+  macOS:    brew install python@3.14
+  Linux:    sudo apt-get install python3.14 python3.14-venv  (or use pyenv)
+  Windows:  https://www.python.org/downloads/  (install with "py launcher", run under Git Bash)
 EOF
         exit 1
     fi
-    echo "[venv] using: $py39"
+    echo "[venv] using: $py"
 
-    # `py -3.9` needs to stay unquoted-as-a-whole; eval handles both cases
-    eval "$py39 -m venv \"$VENV_DIR\""
+    "$py" -m venv "$VENV_DIR"
 
-    # Verify
     local v
     v="$("$VENV_PY" -c 'import sys; print("%d.%d.%d"%sys.version_info[:3])')"
-    case "$v" in
-        3.9.*) echo "[venv] created with python $v" ;;
-        *)
-            echo "[venv] ERROR: venv has python $v, expected 3.9.x" >&2
-            exit 1
-            ;;
-    esac
+    echo "[venv] created with python $v"
 }
 
 install_deps() {
@@ -181,15 +151,7 @@ install_deps() {
     . "$VENV_ACTIVATE"
     python -V
     python -m pip install --upgrade pip
-    # Pin only what the notebook pins; let pip resolve a torch wheel that matches
-    # the platform + python version (macOS arm64, linux x86_64, etc.).
-    python -m pip install \
-        torch \
-        transformers==4.18.0 \
-        tokenizers==0.11.6 \
-        seqeval \
-        scikit-learn \
-        numpy
+    python -m pip install -r "$SCRIPT_DIR/requirements.txt"
     echo "[deps] installed"
 }
 

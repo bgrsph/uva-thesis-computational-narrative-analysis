@@ -1,7 +1,9 @@
-numpy
-pandas
-jupyterlab
-tell_me_again
-seaborn
-matplotlib
-nltk
+jupyterlab==4.5.6
+matplotlib==3.10.8
+nltk==3.9.3
+numpy==2.4.3
+pandas==3.0.1
+seaborn==0.13.2
+tell_me_again==0.1.0
+tqdm==4.67.3
+transformers==5.3.0
