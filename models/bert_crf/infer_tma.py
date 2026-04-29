@@ -65,8 +65,10 @@ def _pick_device() -> str:
     import torch
     if torch.cuda.is_available():
         return "cuda"
-    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return "mps"
+    # MPS is intentionally skipped: the THU-KEG CRF Viterbi decoder mixes CPU and
+    # MPS tensors internally (predates MPS support) and crashes with
+    # "torch.cat(): all input tensors must be on the same device". CPU is fine
+    # for the TMA-scale workload (~540K sentence forward passes; hours on CPU).
     return "cpu"
 
 
@@ -80,7 +82,9 @@ def main() -> int:
 
     # Imports here so `--help` and the unit tests don't pay for them.
     import torch
-    from transformers import BertConfig, BertTokenizer
+    # BertTokenizerFast is required for return_offsets_mapping; the slow Python
+    # tokenizer raises NotImplementedError. Fast tokenizer is built from vocab.txt.
+    from transformers import BertConfig, BertTokenizerFast
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     from bert_crf import BertCRFForTokenClassification
@@ -95,7 +99,7 @@ def main() -> int:
     id2label = {i: lbl for i, lbl in enumerate(labels)}
 
     config = BertConfig.from_pretrained(str(args.checkpoint), num_labels=len(labels))
-    tokenizer = BertTokenizer.from_pretrained(str(args.checkpoint), do_lower_case=True)
+    tokenizer = BertTokenizerFast.from_pretrained(str(args.checkpoint), do_lower_case=True)
     model = BertCRFForTokenClassification.from_pretrained(str(args.checkpoint), config=config)
     model.to(device).eval()
     pad_id = -100  # CrossEntropyLoss().ignore_index, matches training-time setup
@@ -133,8 +137,16 @@ def main() -> int:
                 attn_list    = enc["attention_mask"].tolist()
                 enc          = {k: v.to(device) for k, v in enc.items()}
 
+                # We pass dummy labels so forward() takes the with-labels
+                # branch. The no-labels branch in bert_crf.py creates a Float
+                # `temp_labels` tensor and assigns Long CRF outputs into it;
+                # newer torch refuses the dtype mismatch.
+                # Padding positions need pad_id (-100) so unpad_crf's masking
+                # selects the same number of elements the CRF returns.
+                dummy_labels = torch.full_like(enc["input_ids"], pad_id)
+                dummy_labels[enc["attention_mask"] == 1] = 0
                 with torch.no_grad():
-                    out = model(pad_token_label_id=pad_id, **enc)
+                    out = model(pad_token_label_id=pad_id, labels=dummy_labels, **enc)
                 best_path = out[-1].cpu().tolist()  # forward returns (..., best_path)
 
                 for off_in_batch, (tag_ids, off, mask) in enumerate(zip(best_path, offsets_list, attn_list)):
