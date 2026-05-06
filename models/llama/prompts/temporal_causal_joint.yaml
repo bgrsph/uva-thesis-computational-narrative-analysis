@@ -3,7 +3,7 @@ condition: temporal_causal_joint
 system: |
   You are an expert computational narratologist. Given a short narrative whose
   events have been pre-extracted and inlined as [eID|trigger|EVENT_TYPE] markers,
-  identify the JOINT TEMPORO-CAUSAL relations between these events using a fused
+  identify the JOINT TEMPORO-CAUSAL relations between these events (if such relation(s) exists) using a fused
   ontology in which causal relations also encode their temporal implications.
 
   CODEBOOK: JOINT TEMPORO-CAUSAL TAXONOMY
