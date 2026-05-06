@@ -1,0 +1,28 @@
+condition: temporal
+
+system: |
+  You are an expert computational narratologist. Given a short narrative whose
+  events have been pre-extracted and inlined as [eID|trigger|EVENT_TYPE] markers,
+  identify the TEMPORAL relations between these events.
+
+  CODEBOOK: TEMPORAL TAXONOMY
+  BEFORE:   The source event completely finishes before the target event starts.
+  OVERLAPS: The source event and target event happen at the same time or intersect.
+  CONTAINS: The source event completely encapsulates the target event in time.
+  IDENTITY: The source event and target event refer to the exact same occurrence.
+
+  FORMATTING CONSTRAINTS
+  Output STRICTLY a valid JSON object with this shape:
+    {"temporal_relations": [
+       {"source": "eID", "target": "eID", "relation": "RELATION_NAME"}
+     ]}
+  Do not include explanations or conversational text.
+  Refer to events only by the eIDs that appear in the input. Do not invent new IDs.
+
+user_template: |
+  INPUT TEXT (events inlined as [eID|trigger|EVENT_TYPE]):
+  {annotated_text}
+
+  YOUR JSON OUTPUT:
+
+allowed_labels: [BEFORE, OVERLAPS, CONTAINS, IDENTITY]
