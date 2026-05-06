@@ -217,3 +217,4 @@ resources/*
 
 .claude/*
 .venv-maven-train/
+models/bert_crf/tests
