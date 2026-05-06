@@ -78,6 +78,10 @@ def main() -> int:
     ap.add_argument("--output",     required=True, type=Path)
     ap.add_argument("--checkpoint", required=True, type=Path)
     ap.add_argument("--batch-size", type=int, default=32)
+    ap.add_argument(
+        "--sample-size", type=int, default=None,
+        help="If set, process only the first N input rows (sanity-check runs).",
+    )
     args = ap.parse_args()
 
     # Imports here so `--help` and the unit tests don't pay for them.
@@ -105,12 +109,29 @@ def main() -> int:
     pad_id = -100  # CrossEntropyLoss().ignore_index, matches training-time setup
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
+
+    # Pre-count input rows for a real ETA. One pass over a 41k-line file is ~1s.
+    with args.input.open("r", encoding="utf-8") as fin:
+        total_rows = sum(1 for ln in fin if ln.strip())
+    if args.sample_size is not None:
+        total_rows = min(total_rows, args.sample_size)
+        print(f"[infer_tma] sample-size={args.sample_size}  processing {total_rows} rows", flush=True)
+
     n_in = n_events = 0
     t0 = time.time()
+    PROGRESS_EVERY = 500
+
+    def fmt_secs(s: float) -> str:
+        s = int(s)
+        h, s = divmod(s, 3600)
+        m, s = divmod(s, 60)
+        return f"{h}h{m:02d}m{s:02d}s" if h else f"{m}m{s:02d}s"
 
     with args.input.open("r", encoding="utf-8") as fin, \
          args.output.open("w", encoding="utf-8") as fout:
         for line in fin:
+            if args.sample_size is not None and n_in >= args.sample_size:
+                break
             line = line.strip()
             if not line:
                 continue
@@ -168,12 +189,22 @@ def main() -> int:
             fout.write(json.dumps(row, ensure_ascii=False) + "\n")
             n_in += 1
             n_events += len(events)
-            if n_in % 200 == 0:
-                rate = n_in / (time.time() - t0)
-                print(f"[infer_tma] {n_in} summaries  {n_events} events  ({rate:.1f}/s)",
-                      flush=True)
+            if n_in % PROGRESS_EVERY == 0 or n_in == total_rows:
+                now     = time.time()
+                elapsed = now - t0
+                rate    = n_in / elapsed
+                pct     = 100.0 * n_in / total_rows
+                eta     = (total_rows - n_in) / rate if rate > 0 else 0
+                now_str    = time.strftime("%H:%M:%S", time.localtime(now))
+                finish_str = time.strftime("%H:%M:%S", time.localtime(now + eta))
+                print(
+                    f"[infer_tma] {now_str}  {n_in}/{total_rows} ({pct:.1f}%)  "
+                    f"events={n_events}  rate={rate:.2f}/s  "
+                    f"elapsed={fmt_secs(elapsed)}  ETA={fmt_secs(eta)} (done ~{finish_str})",
+                    flush=True,
+                )
 
-    print(f"[infer_tma] DONE  summaries={n_in}  events={n_events}  in {time.time() - t0:.1f}s")
+    print(f"[infer_tma] DONE  summaries={n_in}  events={n_events}  in {fmt_secs(time.time() - t0)}")
     return 0
 
 
