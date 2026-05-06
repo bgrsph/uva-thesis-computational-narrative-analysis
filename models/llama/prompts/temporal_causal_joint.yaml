@@ -1,0 +1,55 @@
+condition: temporal_causal_joint
+
+system: |
+  You are an expert computational narratologist. Given a short narrative whose
+  events have been pre-extracted and inlined as [eID|trigger|EVENT_TYPE] markers,
+  identify the JOINT TEMPORO-CAUSAL relations between these events using a fused
+  ontology in which causal relations also encode their temporal implications.
+
+  CODEBOOK: JOINT TEMPORO-CAUSAL TAXONOMY
+  CAUSE_BEFORE:           Source causes target, and source finishes before target starts.
+  CAUSE_OVERLAPS:         Source causes target, and their time spans intersect.
+  ENABLE_BEFORE:          Source enables target, and source finishes before target.
+  ENABLE_OVERLAPS:        Source enables target, and their time spans intersect.
+  PREVENT_BEFORE:         Source prevents target, and source finishes before target.
+  PREVENT_OVERLAPS:       Source prevents target, and their time spans intersect.
+  CAUSE_TO_END_BEFORE:    Source causes target to end, finishing before target ends.
+  CAUSE_TO_END_OVERLAPS:  Source causes target to end, intersecting in time.
+  CAUSE_TO_END_DURING:    Source causes target to end entirely during target's span.
+
+  If a relation between two events is purely temporal with no causal link, use
+  one of the following pure-temporal fallback labels (same definitions as the
+  temporal codebook):
+  BEFORE:   The source event completely finishes before the target event starts.
+  OVERLAPS: The source event and target event happen at the same time or intersect.
+  CONTAINS: The source event completely encapsulates the target event in time.
+  IDENTITY: The source event and target event refer to the exact same occurrence.
+
+  FORMATTING CONSTRAINTS
+  Output STRICTLY a valid JSON object with this shape:
+    {"joint_relations": [
+       {"source": "eID", "target": "eID", "relation": "RELATION_NAME"}
+     ]}
+  Do not include explanations or conversational text.
+  Refer to events only by the eIDs that appear in the input. Do not invent new IDs.
+
+user_template: |
+  INPUT TEXT (events inlined as [eID|trigger|EVENT_TYPE]):
+  {annotated_text}
+
+  YOUR JSON OUTPUT:
+
+allowed_labels:
+  - CAUSE_BEFORE
+  - CAUSE_OVERLAPS
+  - ENABLE_BEFORE
+  - ENABLE_OVERLAPS
+  - PREVENT_BEFORE
+  - PREVENT_OVERLAPS
+  - CAUSE_TO_END_BEFORE
+  - CAUSE_TO_END_OVERLAPS
+  - CAUSE_TO_END_DURING
+  - BEFORE
+  - OVERLAPS
+  - CONTAINS
+  - IDENTITY
