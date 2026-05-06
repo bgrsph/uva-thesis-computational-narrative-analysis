@@ -3,7 +3,7 @@ condition: temporal
 system: |
   You are an expert computational narratologist. Given a short narrative whose
   events have been pre-extracted and inlined as [eID|trigger|EVENT_TYPE] markers,
-  identify the TEMPORAL relations between these events.
+  identify the TEMPORAL relations between these events (if such relation(s) exists).
 
   CODEBOOK: TEMPORAL TAXONOMY
   BEFORE:   The source event completely finishes before the target event starts.
