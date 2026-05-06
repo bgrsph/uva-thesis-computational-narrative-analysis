@@ -6,8 +6,7 @@ temporal and causal relations between BERT+CRF-extracted events in
 inference script (UNI-24) loads the file matching the requested
 `--condition` and feeds it into Llama-3-8B-Instruct.
 
-Full design rationale is in
-[`docs/superpowers/specs/2026-05-06-uni-13-llm-prompt-design.md`](../../../docs/superpowers/specs/2026-05-06-uni-13-llm-prompt-design.md).
+
 
 ## Files
 
@@ -18,7 +17,7 @@ Full design rationale is in
 | `temporal_causal_independent.yaml` | e+t+c (independent) | `temporal_relations` + `causal_relations` | 4 + 4 |
 | `temporal_causal_joint.yaml` | e+joint | `joint_relations` | 13 (9 fused + 4 fallbacks) |
 
-> ⚠️ **Pending decision (UNI-62):** the `temporal_causal_independent.yaml`
+> **Pending decision (UNI-62):** the `temporal_causal_independent.yaml`
 > prompt may be dropped in favour of deriving the e+t+c condition by union
 > of the e+t and e+c outputs. Decision is gated on the UNI-24 pilot.
 
