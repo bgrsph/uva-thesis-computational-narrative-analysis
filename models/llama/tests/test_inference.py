@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from models.llama.inference import (
     inline_events,
     load_prompt_config,
@@ -47,3 +49,33 @@ def test_parse_and_validate_happy_path_causal():
     assert len(parsed["causal_relations"]) == 2
     assert parsed["causal_relations"][0]["relation"] == "CAUSE"
     assert parsed["causal_relations"][1]["source"] == "e2"
+
+
+@pytest.mark.parametrize(
+    "out_str, expected_exc",
+    [
+        # Unknown relation label
+        (
+            json.dumps({"causal_relations": [
+                {"source": "e1", "target": "e2", "relation": "INVENTED_LABEL"},
+            ]}),
+            ValueError,
+        ),
+        # Malformed event ID (not matching ^e\d+$)
+        (
+            json.dumps({"causal_relations": [
+                {"source": "event-1", "target": "e2", "relation": "CAUSE"},
+            ]}),
+            ValueError,
+        ),
+        # Not valid JSON at all
+        (
+            "not valid json {",
+            json.JSONDecodeError,
+        ),
+    ],
+)
+def test_parse_and_validate_rejects_bad_inputs(out_str, expected_exc):
+    cfg = load_prompt_config("causal")
+    with pytest.raises(expected_exc):
+        parse_and_validate(out_str, cfg, "causal")
