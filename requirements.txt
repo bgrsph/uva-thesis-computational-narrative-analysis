@@ -3,6 +3,9 @@ matplotlib==3.10.8
 nltk==3.9.3
 numpy==2.4.3
 pandas==3.0.1
+pytest==9.0.3
+python-dotenv==1.2.2
+pyyaml==6.0.3
 seaborn==0.13.2
 tell_me_again==0.1.0
 tqdm==4.67.3
