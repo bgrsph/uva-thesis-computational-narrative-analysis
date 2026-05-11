@@ -21,8 +21,12 @@ set -euo pipefail
 
 : "${SLURM_PARTITION_CPU:?set SLURM_PARTITION_CPU before sbatch (e.g. export SLURM_PARTITION_CPU=rome)}"
 
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-REPO_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
+# Under SLURM, $BASH_SOURCE points to /var/spool/slurm/slurmd/... (SLURM copies the
+# script to a tmp dir before executing). Use $SLURM_SUBMIT_DIR (the directory sbatch
+# was invoked from, which we require to be the repo root) and fall back to BASH_SOURCE
+# for non-SLURM testing.
+REPO_ROOT="${SLURM_SUBMIT_DIR:-$( cd "$( dirname "${BASH_SOURCE[0]}" )/../.." && pwd )}"
+SCRIPT_DIR="$REPO_ROOT/models/bert_crf"
 
 # SLURM does not source ~/.bashrc, so load the EESSI Python module the venv depends on.
 module load 2025
@@ -31,6 +35,6 @@ module load Python/3.13.5-GCCcore-14.3.0
 # shellcheck disable=SC1091
 . "$REPO_ROOT/.venv-maven-train/bin/activate"
 
-echo "[infer_tma.sbatch] job=${SLURM_JOB_ID:-local}  partition=${SLURM_JOB_PARTITION:-?}  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+echo "[infer_tma.sbatch] job=${SLURM_JOB_ID:-local}  partition=${SLURM_JOB_PARTITION:-?}  submit_dir=$REPO_ROOT  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 python "$SCRIPT_DIR/infer_tma.py" "$@"
 echo "[infer_tma.sbatch] done $(date -u +%Y-%m-%dT%H:%M:%SZ)"
