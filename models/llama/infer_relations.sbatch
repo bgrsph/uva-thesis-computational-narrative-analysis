@@ -26,6 +26,10 @@ REPO_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
 cd "$REPO_ROOT"   # so `python -m models.llama.infer_relations` resolves the package root
 
+# SLURM does not source ~/.bashrc, so load the EESSI Python module the venv depends on.
+module load 2025
+module load Python/3.13.5-GCCcore-14.3.0
+
 # shellcheck disable=SC1091
 . "$REPO_ROOT/.venv/bin/activate"
 

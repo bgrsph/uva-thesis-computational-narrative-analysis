@@ -24,6 +24,10 @@ set -euo pipefail
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 REPO_ROOT="$( cd "$SCRIPT_DIR/../.." && pwd )"
 
+# SLURM does not source ~/.bashrc, so load the EESSI Python module the venv depends on.
+module load 2025
+module load Python/3.13.5-GCCcore-14.3.0
+
 # shellcheck disable=SC1091
 . "$REPO_ROOT/.venv-maven-train/bin/activate"
 
