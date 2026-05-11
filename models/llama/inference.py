@@ -47,6 +47,14 @@ def parse_and_validate(out_str: str, cfg: dict, condition: str) -> dict:
     return parsed
 
 
+def build_chat_messages(cfg: dict, annotated_text: str) -> list[dict]:
+    """Assemble the Llama-3 chat-template messages list from a prompt config and the annotated text."""
+    return [
+        {"role": "system", "content": cfg["system"]},
+        {"role": "user",   "content": cfg["user_template"].format(annotated_text=annotated_text)},
+    ]
+
+
 def inline_events(sentences: list[str], events: list[dict]) -> str:
     """Splice `[event_id|trigger|event_type]` markers into each sentence at the event spans.
 
