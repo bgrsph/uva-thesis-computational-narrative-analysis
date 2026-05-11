@@ -47,7 +47,10 @@ class BertCRFForTokenClassification(BertPreTrainedModel):
         self.classifier = nn.Linear(config.hidden_size, config.num_labels + 2)
         self.crf = CRF(self.num_labels)
 
-        self.init_weights()
+        # transformers 5.x renamed init_weights → post_init. post_init also sets
+        # self.all_tied_weights_keys (modeling_utils.py:1298), which from_pretrained
+        # requires during weight loading. See UNI-66.
+        self.post_init()
 
     def _get_features(self, input_ids=None, attention_mask=None, token_type_ids=None,
                       position_ids=None, head_mask=None, inputs_embeds=None):
