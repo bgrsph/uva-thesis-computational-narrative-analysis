@@ -1,4 +1,10 @@
-from models.llama.inference import inline_events
+import json
+
+from models.llama.inference import (
+    inline_events,
+    load_prompt_config,
+    parse_and_validate,
+)
 
 
 def test_inline_events_splices_markers_using_upstream_event_ids():
@@ -25,3 +31,19 @@ def test_inline_events_splices_markers_using_upstream_event_ids():
     # Non-event text outside spans is preserved byte-for-byte.
     assert "The king " in out and " and the queen " in out
     assert "Then the prince " in out and " away." in out
+
+
+def test_parse_and_validate_happy_path_causal():
+    cfg = load_prompt_config("causal")
+    out_str = json.dumps({
+        "causal_relations": [
+            {"source": "e1", "target": "e3", "relation": "CAUSE"},
+            {"source": "e2", "target": "e3", "relation": "ENABLE"},
+        ],
+    })
+
+    parsed = parse_and_validate(out_str, cfg, "causal")
+
+    assert len(parsed["causal_relations"]) == 2
+    assert parsed["causal_relations"][0]["relation"] == "CAUSE"
+    assert parsed["causal_relations"][1]["source"] == "e2"
