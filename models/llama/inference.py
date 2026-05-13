@@ -29,18 +29,40 @@ def load_prompt_config(condition: str) -> dict:
 def parse_and_validate(out_str: str, cfg: dict, condition: str) -> dict:
     """Parse the model's raw output and validate label / eID shape.
 
+    Section-mismatch recovery: for multi-section conditions like
+    `temporal_causal_independent`, a relation whose label is valid in *another*
+    section of this condition's codebook is moved to that section instead of
+    rejected. Single-section conditions still raise on label miss. See UNI-74.
+
     Raises:
         json.JSONDecodeError: output is not valid JSON.
-        ValueError: relation label not in the YAML allow-list, or source/target
-            does not match `^e\\d+$`. (The "is this eID actually present in the
-            summary?" check is UNI-60's job, not UNI-12's.)
+        ValueError: relation label not in *any* of this condition's allow-lists,
+            or source/target does not match `^e\\d+$`. (The "is this eID actually
+            present in the summary?" check is UNI-60's job, not UNI-12's.)
     """
     parsed = json.loads(out_str)
-    for json_key, label_field in CONDITION_KEYS[condition]:
-        allowed = set(cfg[label_field])
+    sections = CONDITION_KEYS[condition]
+    section_allowed = [set(cfg[label_field]) for _, label_field in sections]
+
+    # First pass: route every relation into the section whose codebook accepts its label.
+    for cur_idx, (json_key, _) in enumerate(sections):
+        for rel in list(parsed[json_key]):   # snapshot — we mutate the live list below
+            label = rel["relation"]
+            if label in section_allowed[cur_idx]:
+                continue
+            target_idx = next(
+                (i for i, allowed in enumerate(section_allowed)
+                 if i != cur_idx and label in allowed),
+                None,
+            )
+            if target_idx is None:
+                raise ValueError(f"unknown label: {label}")
+            parsed[json_key].remove(rel)
+            parsed[sections[target_idx][0]].append(rel)
+
+    # Second pass: now that every relation sits in its correct section, validate eIDs.
+    for json_key, _ in sections:
         for rel in parsed[json_key]:
-            if rel["relation"] not in allowed:
-                raise ValueError(f"unknown label: {rel['relation']}")
             for end in ("source", "target"):
                 if not RE_EID.match(rel[end]):
                     raise ValueError(f"bad eID: {rel[end]}")
