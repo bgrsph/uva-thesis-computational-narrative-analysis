@@ -130,6 +130,36 @@ def test_run_inference_writes_one_output_row_per_valid_input(tmp_path, monkeypat
         assert row["relations"]["causal_relations"][0]["relation"] == valid_label
 
 
+def test_run_inference_skips_rows_when_input_exceeds_ctx(tmp_path, monkeypatch, capsys):
+    """If tokenized input is >= LLAMA_CTX, the row is skipped before pipe() is called."""
+    in_path = tmp_path / "in.jsonl"
+    out_path = tmp_path / "out.jsonl"
+    _write_events_jsonl(in_path, [_events_row()])
+
+    # Fake tokenizer that returns >= LLAMA_CTX tokens for the input.
+    class _OverflowTokenizer:
+        eos_token_id = 0
+        def convert_tokens_to_ids(self, _tok): return 1
+        def apply_chat_template(self, _msgs, tokenize=False, add_generation_prompt=True): return "PROMPT"
+        def encode(self, _s, add_special_tokens=False): return [0] * ir.LLAMA_CTX  # exactly at the cap
+
+    class _PipelineCalled(Exception): pass
+    class _NeverCallPipeline:
+        tokenizer = _OverflowTokenizer()
+        def __call__(self, *_a, **_kw): raise _PipelineCalled("pipe() must not be invoked on oversize input")
+
+    monkeypatch.setattr(ir, "_build_pipeline", lambda _model_id: _NeverCallPipeline())
+
+    args = ir.parse_args([
+        "--input", str(in_path), "--output", str(out_path), "--condition", "causal",
+    ])
+    rc = ir.run_inference(args)
+    assert rc == 0
+    assert out_path.read_text() == ""
+    captured = capsys.readouterr()
+    assert "exceeds ctx" in captured.out
+
+
 def test_run_inference_skips_rows_on_validator_failure(tmp_path, monkeypatch, capsys):
     in_path = tmp_path / "in.jsonl"
     out_path = tmp_path / "out.jsonl"

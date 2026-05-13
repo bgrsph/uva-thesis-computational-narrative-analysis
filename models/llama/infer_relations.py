@@ -25,7 +25,10 @@ VALID_CONDITIONS = ("temporal", "causal", "temporal_causal_independent", "tempor
 
 LLAMA_MODEL_ID = "meta-llama/Meta-Llama-3-8B-Instruct"
 LLAMA_DO_SAMPLE = False
-LLAMA_MAX_NEW_TOKENS = 2048
+# Llama-3-8B architectural ctx window; input + output cannot exceed this.
+# We let max_new_tokens float per-row as `LLAMA_CTX - n_input` to leave no
+# generation budget on the table — see UNI-52 audit.
+LLAMA_CTX = 8192
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -72,9 +75,15 @@ def run_inference(args: argparse.Namespace) -> int:
             prompt_str = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
             n_input = len(tok.encode(prompt_str, add_special_tokens=False))
 
+            max_new = LLAMA_CTX - n_input
+            if max_new <= 0:
+                print(f"row {i}: skipping — input alone exceeds ctx "
+                      f"(n_input={n_input} >= {LLAMA_CTX})", flush=True)
+                continue
+
             outputs = pipe(
                 messages,
-                max_new_tokens=LLAMA_MAX_NEW_TOKENS,
+                max_new_tokens=max_new,
                 do_sample=LLAMA_DO_SAMPLE,
                 eos_token_id=terminators,
                 pad_token_id=tok.eos_token_id,
