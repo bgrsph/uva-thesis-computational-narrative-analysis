@@ -45,8 +45,9 @@ class CRF(nn.Module):
         init_transitions = torch.zeros(self.tagset_size + 2, self.tagset_size + 2)
         init_transitions[:, self.START_TAG] = -10000.0
         init_transitions[self.STOP_TAG, :] = -10000.0
-        if torch.cuda.is_available():
-            init_transitions = init_transitions.cuda()
+        # Device placement is handled by model.to(device) on the parent module.
+        # transformers 5.x constructs sub-modules on the meta device first, so calling
+        # .cuda() here raises "Cannot copy out of meta tensor; no data!".
         self.transitions = nn.Parameter(init_transitions, requires_grad=True)
 
     def init_hidden_cell(self, batch_size, layer_hidden_dim):
