@@ -211,10 +211,11 @@ data/
 
 .DS_Store
 
-docs/*
+/docs/*
 
-resources/*
+/resources/*
 
 .claude/*
 .venv-maven-train/
 models/bert_crf/tests
+
