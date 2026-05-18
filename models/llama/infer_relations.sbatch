@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=llama-infer-relations
 #SBATCH --gres=gpu:1
-#SBATCH --time=06:00:00
+#SBATCH --time=48:00:00
 #SBATCH --output=%x-%j.out
 #SBATCH --error=%x-%j.err
 #
