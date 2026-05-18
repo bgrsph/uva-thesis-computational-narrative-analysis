@@ -131,7 +131,6 @@ def test_run_inference_writes_one_output_row_per_valid_input(tmp_path, monkeypat
         assert cb["response_parsed"]["causal_relations"][0]["relation"]  == valid_label
         assert cb["relations"]["causal_relations"][0]["relation"]        == valid_label
         assert cb["parse_error"]                                          is None
-        assert cb["rejected_relations"]                                  == []
         assert cb["prompt_rendered"]                                     == "PROMPT"
         assert cb["response_raw"]                                        == canned
         assert cb["input_tokens"]                                        == 7
@@ -173,19 +172,18 @@ def test_run_inference_writes_overflow_row_without_calling_pipeline(tmp_path, mo
     assert len(out_rows) == 1
 
     cb = out_rows[0]["condition_block"]
-    assert cb["source"]              == "skipped_ctx_overflow"
-    assert cb["model_id"]            == ir.LLAMA_MODEL_ID
-    assert cb["prompt_template"]     == "models/llama/prompts/causal.yaml"
-    assert cb["prompt_rendered"]     == "PROMPT"
-    assert cb["input_tokens"]        == ir.LLAMA_CTX
-    assert cb["response_raw"]        is None
-    assert cb["response_parsed"]     is None
-    assert cb["relations"]           is None
-    assert cb["rejected_relations"]  == []
-    assert cb["output_tokens"]       is None
-    assert cb["max_new_tokens"]      is None
-    assert cb["hit_ctx_cap"]         is None
-    assert cb["parse_error"]         is None
+    assert cb["source"]           == "skipped_ctx_overflow"
+    assert cb["model_id"]         == ir.LLAMA_MODEL_ID
+    assert cb["prompt_template"]  == "models/llama/prompts/causal.yaml"
+    assert cb["prompt_rendered"]  == "PROMPT"
+    assert cb["input_tokens"]     == ir.LLAMA_CTX
+    assert cb["response_raw"]     is None
+    assert cb["response_parsed"]  is None
+    assert cb["relations"]        is None
+    assert cb["output_tokens"]    is None
+    assert cb["max_new_tokens"]   is None
+    assert cb["hit_ctx_cap"]      is None
+    assert cb["parse_error"]      is None
 
     captured = capsys.readouterr()
     assert "exceeds ctx" in captured.out
@@ -209,11 +207,10 @@ def test_run_inference_writes_parse_failure_rows_with_error(tmp_path, monkeypatc
     assert len(out_rows) == 1
 
     cb = out_rows[0]["condition_block"]
-    assert cb["response_raw"]        == "not-json{"
-    assert cb["response_parsed"]     is None
-    assert cb["relations"]           is None
-    assert cb["rejected_relations"]  == []
-    assert cb["parse_error"]         is not None
+    assert cb["response_raw"]    == "not-json{"
+    assert cb["response_parsed"] is None
+    assert cb["relations"]       is None
+    assert cb["parse_error"]     is not None
     assert "JSONDecodeError" in cb["parse_error"]
 
     # The print-to-stdout audit trail is still useful (Snellius logs).

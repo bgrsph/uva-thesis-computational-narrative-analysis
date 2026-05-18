@@ -44,37 +44,31 @@ def test_parse_and_validate_happy_path_causal():
         ],
     })
 
-    parsed, rejected = parse_and_validate(out_str, cfg, "causal")
+    parsed = parse_and_validate(out_str, cfg, "causal")
 
     assert len(parsed["causal_relations"]) == 2
     assert parsed["causal_relations"][0]["relation"] == "CAUSE"
     assert parsed["causal_relations"][1]["source"] == "e2"
-    assert rejected == []
 
 
-def test_parse_and_validate_rejects_unknown_label_keeps_others():
-    """UNI-65 Option A: an unknown label drops just that relation, keeps the rest."""
+def test_parse_and_validate_silently_skips_unknown_labels():
+    """UNI-65 Option A: an unknown label drops just that relation, keeps the rest.
+    The verbatim Llama output is preserved in condition_block.response_raw (audit trail)."""
     cfg = load_prompt_config("causal")
     out_str = json.dumps({
         "causal_relations": [
             {"source": "e1", "target": "e2", "relation": "CAUSE"},            # valid
-            {"source": "e3", "target": "e4", "relation": "INVENTED_LABEL"},   # rejected
+            {"source": "e3", "target": "e4", "relation": "INVENTED_LABEL"},   # dropped
             {"source": "e5", "target": "e6", "relation": "ENABLE"},           # valid
         ],
     })
 
-    parsed, rejected = parse_and_validate(out_str, cfg, "causal")
+    parsed = parse_and_validate(out_str, cfg, "causal")
 
-    # Valid ones survive.
     assert [r["relation"] for r in parsed["causal_relations"]] == ["CAUSE", "ENABLE"]
-    # Bad one is captured with a reason.
-    assert len(rejected) == 1
-    assert rejected[0]["section"] == "causal_relations"
-    assert rejected[0]["relation"]["relation"] == "INVENTED_LABEL"
-    assert "unknown label: INVENTED_LABEL" in rejected[0]["reason"]
 
 
-def test_parse_and_validate_rejects_bad_eid_keeps_others():
+def test_parse_and_validate_silently_skips_bad_eids():
     """UNI-65 Option A: a malformed eID drops just that relation."""
     cfg = load_prompt_config("causal")
     out_str = json.dumps({
@@ -85,12 +79,10 @@ def test_parse_and_validate_rejects_bad_eid_keeps_others():
         ],
     })
 
-    parsed, rejected = parse_and_validate(out_str, cfg, "causal")
+    parsed = parse_and_validate(out_str, cfg, "causal")
 
     assert len(parsed["causal_relations"]) == 1
     assert parsed["causal_relations"][0]["source"] == "e1"
-    assert len(rejected) == 2
-    assert all("bad eID" in r["reason"] for r in rejected)
 
 
 def test_parse_and_validate_still_raises_on_malformed_json():
@@ -147,23 +139,22 @@ def test_build_run_row_happy_path():
 
     # condition_block fully populated on success.
     cb = row["condition_block"]
-    assert cb["source"]              == "llama"
-    assert cb["model_id"]            == _TEST_MODEL_ID
-    assert cb["prompt_template"]     == "models/llama/prompts/causal.yaml"
-    assert cb["prompt_rendered"]     == "PROMPT"
-    assert cb["response_raw"]        == response_raw
+    assert cb["source"]           == "llama"
+    assert cb["model_id"]         == _TEST_MODEL_ID
+    assert cb["prompt_template"]  == "models/llama/prompts/causal.yaml"
+    assert cb["prompt_rendered"]  == "PROMPT"
+    assert cb["response_raw"]     == response_raw
     assert cb["response_parsed"]["causal_relations"][0]["relation"] == valid_label
-    assert cb["parse_error"]         is None
-    assert cb["relations"]           == cb["response_parsed"]
-    assert cb["rejected_relations"]  == []
-    assert cb["input_tokens"]        == 10
-    assert cb["output_tokens"]       == 42
-    assert cb["max_new_tokens"]      == 8182
-    assert cb["hit_ctx_cap"]         is False    # 42 != 8182
+    assert cb["parse_error"]      is None
+    assert cb["relations"]        == cb["response_parsed"]
+    assert cb["input_tokens"]     == 10
+    assert cb["output_tokens"]    == 42
+    assert cb["max_new_tokens"]   == 8182
+    assert cb["hit_ctx_cap"]      is False    # 42 != 8182
 
 
 def test_build_run_row_json_parse_failure_keeps_row():
-    """A truly unparseable response: parse_error set, relations + rejected both empty/None."""
+    """A truly unparseable response: parse_error set, relations None, response_raw preserved."""
     cfg = load_prompt_config("causal")
     response_raw = "not valid json {"
 
@@ -183,22 +174,22 @@ def test_build_run_row_json_parse_failure_keeps_row():
     assert row["wikidata_id"] == "1000000"
 
     cb = row["condition_block"]
-    assert cb["response_raw"]        == response_raw   # verbatim, preserved
-    assert cb["response_parsed"]     is None
-    assert cb["relations"]           is None
-    assert cb["rejected_relations"]  == []             # nothing to reject — nothing parsed
-    assert cb["parse_error"]         is not None
+    assert cb["response_raw"]    == response_raw   # verbatim, preserved
+    assert cb["response_parsed"] is None
+    assert cb["relations"]       is None
+    assert cb["parse_error"]     is not None
     assert "JSONDecodeError" in cb["parse_error"]
-    assert cb["hit_ctx_cap"]         is True           # 2048 == 2048
+    assert cb["hit_ctx_cap"]     is True           # 2048 == 2048
 
 
 def test_build_run_row_validation_error_keeps_valid_relations():
-    """UNI-65 Option A: a bad label drops just that relation, keeps the rest."""
+    """UNI-65 Option A: a bad label drops just that relation, keeps the rest.
+    response_raw is the audit trail for what got dropped."""
     cfg = load_prompt_config("causal")
     valid_label = cfg["allowed_labels"][0]
     response_raw = json.dumps({"causal_relations": [
-        {"source": "e1", "target": "e2", "relation": valid_label},          # valid
-        {"source": "e3", "target": "e4", "relation": "INVENTED_LABEL"},    # rejected
+        {"source": "e1", "target": "e2", "relation": valid_label},        # valid
+        {"source": "e3", "target": "e4", "relation": "INVENTED_LABEL"},  # silently dropped
     ]})
 
     row = build_run_row(
@@ -217,8 +208,7 @@ def test_build_run_row_validation_error_keeps_valid_relations():
     # The valid relation survives.
     assert len(cb["relations"]["causal_relations"]) == 1
     assert cb["relations"]["causal_relations"][0]["relation"] == valid_label
-    # The bad one is captured separately.
-    assert len(cb["rejected_relations"]) == 1
-    assert "INVENTED_LABEL" in cb["rejected_relations"][0]["reason"]
-    # parse_error is NOT used for per-relation failures.
+    # parse_error is NOT used for per-relation drops.
     assert cb["parse_error"] is None
+    # The bad relation is still visible in response_raw — that's the audit trail.
+    assert "INVENTED_LABEL" in cb["response_raw"]
