@@ -38,12 +38,13 @@ def main(temporal_path: Path, causal_path: Path, output_path: Path) -> int:
             c = by_key_c[k]
             row = {key: val for key, val in t.items() if key != "condition_block"}
             row["condition_block"] = {
-                "source":        "composed",
-                "composed_from": ["temporal", "causal"],
+                "source":             "composed",
+                "composed_from":      ["temporal", "causal"],
                 "relations": {
                     "temporal_relations": (t["condition_block"]["relations"] or {}).get("temporal_relations", []),
                     "causal_relations":   (c["condition_block"]["relations"] or {}).get("causal_relations",   []),
                 },
+                "rejected_relations": [],   # composed rows have nothing to reject themselves
             }
             fout.write(json.dumps(row, ensure_ascii=False) + "\n")
     return 0

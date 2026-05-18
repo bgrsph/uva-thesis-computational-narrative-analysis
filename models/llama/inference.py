@@ -24,29 +24,41 @@ def load_prompt_config(condition: str) -> dict:
     return yaml.safe_load(path.read_text())
 
 
-def parse_and_validate(out_str: str, cfg: dict, condition: str) -> dict:
+def parse_and_validate(out_str: str, cfg: dict, condition: str) -> tuple[dict, list[dict]]:
     """Parse the model's raw output and validate label / eID shape.
 
-    Section-mismatch recovery: for multi-section conditions like
-    `temporal_causal_independent`, a relation whose label is valid in *another*
-    section of this condition's codebook is moved to that section instead of
-    rejected. Single-section conditions still raise on label miss. See UNI-74.
+    Returns ``(parsed, rejected)`` — a dict of cleaned per-section relation lists
+    and a list of rejected entries. **Bad labels and bad eIDs no longer raise;**
+    they are dropped from `parsed` and appended to `rejected` with a reason.
+    This was UNI-65's "Option A" recovery: previously a single bad relation
+    would null the whole row.
+
+    Section-mismatch recovery: for multi-section conditions, a relation whose
+    label is valid in *another* section of this condition's codebook is moved
+    to that section instead of being rejected. (Single-section is what we have
+    today; the reroute is dead code under current `CONDITION_KEYS` but kept for
+    a future multi-section condition.)
+
+    Each rejection record has shape::
+
+        {"section": "<json_key>", "relation": <orig rel dict>, "reason": "<str>"}
 
     Raises:
-        json.JSONDecodeError: output is not valid JSON.
-        ValueError: relation label not in *any* of this condition's allow-lists,
-            or source/target does not match `^e\\d+$`. (The "is this eID actually
-            present in the summary?" check is UNI-60's job, not UNI-12's.)
+        json.JSONDecodeError: output is not valid JSON (the only remaining
+            hard-fail mode — everything past JSON parse is recoverable).
     """
     parsed = json.loads(out_str)
     sections = CONDITION_KEYS[condition]
     section_allowed = [set(cfg[label_field]) for _, label_field in sections]
+    rejected: list[dict] = []
+    out: dict[str, list[dict]] = {json_key: [] for json_key, _ in sections}
 
-    # First pass: route every relation into the section whose codebook accepts its label.
+    # Pass 1: route by label. Unknown-label relations land in `rejected`.
     for cur_idx, (json_key, _) in enumerate(sections):
-        for rel in list(parsed[json_key]):   # snapshot — we mutate the live list below
+        for rel in parsed.get(json_key, []):
             label = rel["relation"]
             if label in section_allowed[cur_idx]:
+                out[json_key].append(rel)
                 continue
             target_idx = next(
                 (i for i, allowed in enumerate(section_allowed)
@@ -54,17 +66,27 @@ def parse_and_validate(out_str: str, cfg: dict, condition: str) -> dict:
                 None,
             )
             if target_idx is None:
-                raise ValueError(f"unknown label: {label}")
-            parsed[json_key].remove(rel)
-            parsed[sections[target_idx][0]].append(rel)
+                rejected.append({"section": json_key, "relation": rel,
+                                 "reason": f"unknown label: {label}"})
+                continue
+            out[sections[target_idx][0]].append(rel)
 
-    # Second pass: now that every relation sits in its correct section, validate eIDs.
+    # Pass 2: validate eIDs. Bad-eID relations move from `out` to `rejected`.
     for json_key, _ in sections:
-        for rel in parsed[json_key]:
-            for end in ("source", "target"):
-                if not RE_EID.match(rel[end]):
-                    raise ValueError(f"bad eID: {rel[end]}")
-    return parsed
+        kept: list[dict] = []
+        for rel in out[json_key]:
+            bad_eid = next(
+                (rel[end] for end in ("source", "target") if not RE_EID.match(rel[end])),
+                None,
+            )
+            if bad_eid is not None:
+                rejected.append({"section": json_key, "relation": rel,
+                                 "reason": f"bad eID: {bad_eid}"})
+                continue
+            kept.append(rel)
+        out[json_key] = kept
+
+    return out, rejected
 
 
 def build_chat_messages(cfg: dict, annotated_text: str) -> list[dict]:
@@ -89,33 +111,39 @@ def build_run_row(
 ) -> dict:
     """Compose the per-condition row written by infer_relations.py.
 
-    Returns a row whether or not parsing succeeded. A parse failure populates
-    `parse_error` (str) and leaves `response_parsed` / `relations` as None —
-    so error analysis can read the failure mode directly from the JSONL row
-    instead of scraping Snellius stdout. See UNI-65.
+    Returns a row whether or not parsing succeeded.
+
+    - JSON-parse failure (the only hard-fail): populates `parse_error`, leaves
+      `response_parsed` / `relations` as None, and `rejected_relations` as [].
+    - Per-relation validation issues (bad labels, bad eIDs): the offending
+      relations land in `rejected_relations`; the valid ones are still in
+      `relations`. `parse_error` is None in this case. This is UNI-65's
+      Option A recovery — previously, a single bad relation nulled the row.
     """
     try:
-        parsed = parse_and_validate(response_raw, cfg, condition)
+        parsed, rejected = parse_and_validate(response_raw, cfg, condition)
         parse_error = None
-    except (ValueError, json.JSONDecodeError) as e:
+    except json.JSONDecodeError as e:
         parsed = None
+        rejected = []
         parse_error = f"{type(e).__name__}: {e}"
 
     return {
         **input_row,
         "condition_block": {
-            "source":          "llama",
-            "model_id":        model_id,
-            "prompt_template": f"models/llama/prompts/{condition}.yaml",
-            "prompt_rendered": prompt_rendered,
-            "response_raw":    response_raw,
-            "response_parsed": parsed,
-            "parse_error":     parse_error,
-            "relations":       parsed,
-            "input_tokens":    input_tokens,
-            "output_tokens":   output_tokens,
-            "max_new_tokens":  max_new_tokens,
-            "hit_ctx_cap":     output_tokens == max_new_tokens,
+            "source":             "llama",
+            "model_id":           model_id,
+            "prompt_template":    f"models/llama/prompts/{condition}.yaml",
+            "prompt_rendered":    prompt_rendered,
+            "response_raw":       response_raw,
+            "response_parsed":    parsed,
+            "parse_error":        parse_error,
+            "relations":          parsed,
+            "rejected_relations": rejected,
+            "input_tokens":       input_tokens,
+            "output_tokens":      output_tokens,
+            "max_new_tokens":     max_new_tokens,
+            "hit_ctx_cap":        output_tokens == max_new_tokens,
         },
     }
 

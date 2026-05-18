@@ -44,41 +44,60 @@ def test_parse_and_validate_happy_path_causal():
         ],
     })
 
-    parsed = parse_and_validate(out_str, cfg, "causal")
+    parsed, rejected = parse_and_validate(out_str, cfg, "causal")
 
     assert len(parsed["causal_relations"]) == 2
     assert parsed["causal_relations"][0]["relation"] == "CAUSE"
     assert parsed["causal_relations"][1]["source"] == "e2"
+    assert rejected == []
 
 
-@pytest.mark.parametrize(
-    "out_str, expected_exc",
-    [
-        # Unknown relation label
-        (
-            json.dumps({"causal_relations": [
-                {"source": "e1", "target": "e2", "relation": "INVENTED_LABEL"},
-            ]}),
-            ValueError,
-        ),
-        # Malformed event ID (not matching ^e\d+$)
-        (
-            json.dumps({"causal_relations": [
-                {"source": "event-1", "target": "e2", "relation": "CAUSE"},
-            ]}),
-            ValueError,
-        ),
-        # Not valid JSON at all
-        (
-            "not valid json {",
-            json.JSONDecodeError,
-        ),
-    ],
-)
-def test_parse_and_validate_rejects_bad_inputs(out_str, expected_exc):
+def test_parse_and_validate_rejects_unknown_label_keeps_others():
+    """UNI-65 Option A: an unknown label drops just that relation, keeps the rest."""
     cfg = load_prompt_config("causal")
-    with pytest.raises(expected_exc):
-        parse_and_validate(out_str, cfg, "causal")
+    out_str = json.dumps({
+        "causal_relations": [
+            {"source": "e1", "target": "e2", "relation": "CAUSE"},            # valid
+            {"source": "e3", "target": "e4", "relation": "INVENTED_LABEL"},   # rejected
+            {"source": "e5", "target": "e6", "relation": "ENABLE"},           # valid
+        ],
+    })
+
+    parsed, rejected = parse_and_validate(out_str, cfg, "causal")
+
+    # Valid ones survive.
+    assert [r["relation"] for r in parsed["causal_relations"]] == ["CAUSE", "ENABLE"]
+    # Bad one is captured with a reason.
+    assert len(rejected) == 1
+    assert rejected[0]["section"] == "causal_relations"
+    assert rejected[0]["relation"]["relation"] == "INVENTED_LABEL"
+    assert "unknown label: INVENTED_LABEL" in rejected[0]["reason"]
+
+
+def test_parse_and_validate_rejects_bad_eid_keeps_others():
+    """UNI-65 Option A: a malformed eID drops just that relation."""
+    cfg = load_prompt_config("causal")
+    out_str = json.dumps({
+        "causal_relations": [
+            {"source": "e1", "target": "e2", "relation": "CAUSE"},      # valid
+            {"source": "event-1", "target": "e2", "relation": "CAUSE"}, # bad source
+            {"source": "e3", "target": "e?",  "relation": "ENABLE"},    # bad target
+        ],
+    })
+
+    parsed, rejected = parse_and_validate(out_str, cfg, "causal")
+
+    assert len(parsed["causal_relations"]) == 1
+    assert parsed["causal_relations"][0]["source"] == "e1"
+    assert len(rejected) == 2
+    assert all("bad eID" in r["reason"] for r in rejected)
+
+
+def test_parse_and_validate_still_raises_on_malformed_json():
+    """JSON-parse failure is the only remaining hard-fail mode."""
+    cfg = load_prompt_config("causal")
+    with pytest.raises(json.JSONDecodeError):
+        parse_and_validate("not valid json {", cfg, "causal")
 
 
 # ---- UNI-65: build_run_row ----
@@ -128,21 +147,23 @@ def test_build_run_row_happy_path():
 
     # condition_block fully populated on success.
     cb = row["condition_block"]
-    assert cb["source"]           == "llama"
-    assert cb["model_id"]         == _TEST_MODEL_ID
-    assert cb["prompt_template"]  == "models/llama/prompts/causal.yaml"
-    assert cb["prompt_rendered"]  == "PROMPT"
-    assert cb["response_raw"]     == response_raw
+    assert cb["source"]              == "llama"
+    assert cb["model_id"]            == _TEST_MODEL_ID
+    assert cb["prompt_template"]     == "models/llama/prompts/causal.yaml"
+    assert cb["prompt_rendered"]     == "PROMPT"
+    assert cb["response_raw"]        == response_raw
     assert cb["response_parsed"]["causal_relations"][0]["relation"] == valid_label
-    assert cb["parse_error"]      is None
-    assert cb["relations"]        == cb["response_parsed"]
-    assert cb["input_tokens"]     == 10
-    assert cb["output_tokens"]    == 42
-    assert cb["max_new_tokens"]   == 8182
-    assert cb["hit_ctx_cap"]      is False    # 42 != 8182
+    assert cb["parse_error"]         is None
+    assert cb["relations"]           == cb["response_parsed"]
+    assert cb["rejected_relations"]  == []
+    assert cb["input_tokens"]        == 10
+    assert cb["output_tokens"]       == 42
+    assert cb["max_new_tokens"]      == 8182
+    assert cb["hit_ctx_cap"]         is False    # 42 != 8182
 
 
-def test_build_run_row_parse_failure_keeps_row():
+def test_build_run_row_json_parse_failure_keeps_row():
+    """A truly unparseable response: parse_error set, relations + rejected both empty/None."""
     cfg = load_prompt_config("causal")
     response_raw = "not valid json {"
 
@@ -162,19 +183,22 @@ def test_build_run_row_parse_failure_keeps_row():
     assert row["wikidata_id"] == "1000000"
 
     cb = row["condition_block"]
-    assert cb["response_raw"]    == response_raw   # verbatim, preserved
-    assert cb["response_parsed"] is None
-    assert cb["relations"]       is None
-    assert cb["parse_error"]     is not None
+    assert cb["response_raw"]        == response_raw   # verbatim, preserved
+    assert cb["response_parsed"]     is None
+    assert cb["relations"]           is None
+    assert cb["rejected_relations"]  == []             # nothing to reject — nothing parsed
+    assert cb["parse_error"]         is not None
     assert "JSONDecodeError" in cb["parse_error"]
-    assert cb["hit_ctx_cap"]     is True           # 2048 == 2048
+    assert cb["hit_ctx_cap"]         is True           # 2048 == 2048
 
 
-def test_build_run_row_parse_failure_records_validation_error():
+def test_build_run_row_validation_error_keeps_valid_relations():
+    """UNI-65 Option A: a bad label drops just that relation, keeps the rest."""
     cfg = load_prompt_config("causal")
-    # JSON parses fine, but contains a label that's not in the causal codebook.
+    valid_label = cfg["allowed_labels"][0]
     response_raw = json.dumps({"causal_relations": [
-        {"source": "e1", "target": "e2", "relation": "INVENTED_LABEL"},
+        {"source": "e1", "target": "e2", "relation": valid_label},          # valid
+        {"source": "e3", "target": "e4", "relation": "INVENTED_LABEL"},    # rejected
     ]})
 
     row = build_run_row(
@@ -190,7 +214,11 @@ def test_build_run_row_parse_failure_records_validation_error():
     )
 
     cb = row["condition_block"]
-    assert cb["response_parsed"] is None
-    assert cb["relations"]       is None
-    assert cb["parse_error"].startswith("ValueError:")
-    assert "INVENTED_LABEL" in cb["parse_error"]
+    # The valid relation survives.
+    assert len(cb["relations"]["causal_relations"]) == 1
+    assert cb["relations"]["causal_relations"][0]["relation"] == valid_label
+    # The bad one is captured separately.
+    assert len(cb["rejected_relations"]) == 1
+    assert "INVENTED_LABEL" in cb["rejected_relations"][0]["reason"]
+    # parse_error is NOT used for per-relation failures.
+    assert cb["parse_error"] is None
