@@ -16,9 +16,9 @@ from typing import Sequence
 
 from models.llama.inference import (
     build_chat_messages,
+    build_run_row,
     inline_events,
     load_prompt_config,
-    parse_and_validate,
 )
 
 VALID_CONDITIONS = ("temporal", "causal", "temporal_causal_joint")
@@ -79,6 +79,24 @@ def run_inference(args: argparse.Namespace) -> int:
             if max_new <= 0:
                 print(f"row {i}: skipping — input alone exceeds ctx "
                       f"(n_input={n_input} >= {LLAMA_CTX})", flush=True)
+                overflow_row = {
+                    **row,
+                    "condition_block": {
+                        "source":          "skipped_ctx_overflow",
+                        "model_id":        LLAMA_MODEL_ID,
+                        "prompt_template": f"models/llama/prompts/{args.condition}.yaml",
+                        "prompt_rendered": prompt_str,
+                        "response_raw":    None,
+                        "response_parsed": None,
+                        "parse_error":     None,
+                        "relations":       None,
+                        "input_tokens":    n_input,
+                        "output_tokens":   None,
+                        "max_new_tokens":  None,
+                        "hit_ctx_cap":     None,
+                    },
+                }
+                fout.write(json.dumps(overflow_row) + "\n")
                 continue
 
             outputs = pipe(
@@ -92,13 +110,20 @@ def run_inference(args: argparse.Namespace) -> int:
             n_output = len(tok.encode(out_str, add_special_tokens=False))
             print(f"row {i}: input_tokens={n_input} output_tokens={n_output}", flush=True)
 
-            try:
-                parsed = parse_and_validate(out_str, cfg, args.condition)
-            except (ValueError, json.JSONDecodeError) as e:
-                print(f"row {i}: {e}", flush=True)
-                continue   # spec §3.2 + §5: skip row; UNI-25 owns retry/drop policy.
-
-            fout.write(json.dumps({**row, "relations": parsed}) + "\n")
+            out_row = build_run_row(
+                input_row=row,
+                condition=args.condition,
+                model_id=LLAMA_MODEL_ID,
+                prompt_rendered=prompt_str,
+                response_raw=out_str,
+                input_tokens=n_input,
+                output_tokens=n_output,
+                max_new_tokens=max_new,
+                cfg=cfg,
+            )
+            if out_row["condition_block"]["parse_error"]:
+                print(f"row {i}: {out_row['condition_block']['parse_error']}", flush=True)
+            fout.write(json.dumps(out_row) + "\n")
     return 0
 
 
