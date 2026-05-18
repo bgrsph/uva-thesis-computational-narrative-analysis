@@ -75,6 +75,51 @@ def build_chat_messages(cfg: dict, annotated_text: str) -> list[dict]:
     ]
 
 
+def build_run_row(
+    *,
+    input_row: dict,
+    condition: str,
+    model_id: str,
+    prompt_rendered: str,
+    response_raw: str,
+    input_tokens: int,
+    output_tokens: int,
+    max_new_tokens: int,
+    cfg: dict,
+) -> dict:
+    """Compose the per-condition row written by infer_relations.py.
+
+    Returns a row whether or not parsing succeeded. A parse failure populates
+    `parse_error` (str) and leaves `response_parsed` / `relations` as None —
+    so error analysis can read the failure mode directly from the JSONL row
+    instead of scraping Snellius stdout. See UNI-65.
+    """
+    try:
+        parsed = parse_and_validate(response_raw, cfg, condition)
+        parse_error = None
+    except (ValueError, json.JSONDecodeError) as e:
+        parsed = None
+        parse_error = f"{type(e).__name__}: {e}"
+
+    return {
+        **input_row,
+        "condition_block": {
+            "source":          "llama",
+            "model_id":        model_id,
+            "prompt_template": f"models/llama/prompts/{condition}.yaml",
+            "prompt_rendered": prompt_rendered,
+            "response_raw":    response_raw,
+            "response_parsed": parsed,
+            "parse_error":     parse_error,
+            "relations":       parsed,
+            "input_tokens":    input_tokens,
+            "output_tokens":   output_tokens,
+            "max_new_tokens":  max_new_tokens,
+            "hit_ctx_cap":     output_tokens == max_new_tokens,
+        },
+    }
+
+
 def inline_events(sentences: list[str], events: list[dict]) -> str:
     """Splice `[event_id|trigger|event_type]` markers into each sentence at the event spans.
 
