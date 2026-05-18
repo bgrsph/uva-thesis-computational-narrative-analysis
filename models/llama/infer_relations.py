@@ -21,7 +21,7 @@ from models.llama.inference import (
     parse_and_validate,
 )
 
-VALID_CONDITIONS = ("temporal", "causal", "temporal_causal_independent", "temporal_causal_joint")
+VALID_CONDITIONS = ("temporal", "causal", "temporal_causal_joint")
 
 LLAMA_MODEL_ID = "meta-llama/Meta-Llama-3-8B-Instruct"
 LLAMA_DO_SAMPLE = False

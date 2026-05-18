@@ -31,7 +31,7 @@ def test_parse_args_accepts_sample_size(tmp_path):
 
 
 @pytest.mark.parametrize("cond", [
-    "temporal", "causal", "temporal_causal_independent", "temporal_causal_joint",
+    "temporal", "causal", "temporal_causal_joint",
 ])
 def test_parse_args_accepts_all_four_conditions(tmp_path, cond):
     args = ir.parse_args([

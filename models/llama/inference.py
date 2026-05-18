@@ -8,11 +8,9 @@ import yaml
 RE_EID = re.compile(r"^e\d+$")
 
 CONDITION_KEYS: dict[str, list[tuple[str, str]]] = {
-    "temporal":                    [("temporal_relations", "allowed_labels")],
-    "causal":                      [("causal_relations",   "allowed_labels")],
-    "temporal_causal_independent": [("temporal_relations", "allowed_temporal_labels"),
-                                    ("causal_relations",   "allowed_causal_labels")],
-    "temporal_causal_joint":       [("joint_relations",    "allowed_labels")],
+    "temporal":              [("temporal_relations", "allowed_labels")],
+    "causal":                [("causal_relations",   "allowed_labels")],
+    "temporal_causal_joint": [("joint_relations",    "allowed_labels")],
 }
 
 
