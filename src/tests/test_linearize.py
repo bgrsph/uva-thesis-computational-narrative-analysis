@@ -51,3 +51,135 @@ def test_relation_sort_by_eid():
 def test_empty_relations_keeps_header():
     out = linearize.linearize_relations([], "CAUSAL")
     assert out == "CAUSAL:\n"
+
+
+def _row_fixture():
+    """Minimal row matching the experiment.jsonl schema for a 3-event story."""
+    return {
+        "wikidata_id": "1000000",
+        "summary_id":  "en",
+        "lang":        "en",
+        "text":        "Alice arrived. Bob left. Carol stayed.",
+        "events": [
+            _event("e1", 0,  0, "arrived",  "Arriving"),
+            _event("e2", 1,  4, "left",     "Departing"),
+            _event("e3", 2,  6, "stayed",   "Stay"),
+        ],
+        "conditions": {
+            "temporal": {
+                "relations":   {"temporal_relations": [
+                    {"source": "e2", "target": "e1", "relation": "BEFORE"},
+                ]},
+                "parse_error": None,
+            },
+            "causal": {
+                "relations":   {"causal_relations": [
+                    {"source": "e1", "target": "e2", "relation": "CAUSE"},
+                    {"source": "e2", "target": "e3", "relation": "ENABLE"},
+                ]},
+                "parse_error": None,
+            },
+            "temporal_causal_joint": {
+                "relations":   {"joint_relations": [
+                    {"source": "e1", "target": "e2", "relation": "CAUSE_BEFORE"},
+                ]},
+                "parse_error": None,
+            },
+            "temporal_causal_independent": {
+                "relations":   {
+                    "temporal_relations": [
+                        {"source": "e2", "target": "e1", "relation": "BEFORE"},
+                    ],
+                    "causal_relations": [
+                        {"source": "e1", "target": "e2", "relation": "CAUSE"},
+                    ],
+                },
+            },
+        },
+    }
+
+
+def test_linearize_row_populates_five_keys():
+    out = linearize.linearize_row(_row_fixture())
+    assert out["linearized_events_only"] == "e1|arrived|Arriving e2|left|Departing e3|stayed|Stay"
+    assert out["conditions"]["temporal"]["linearized"] == (
+        "e1|arrived|Arriving e2|left|Departing e3|stayed|Stay\n"
+        "TEMPORAL:\n"
+        "(e2, BEFORE, e1)\n"
+    )
+    assert out["conditions"]["causal"]["linearized"] == (
+        "e1|arrived|Arriving e2|left|Departing e3|stayed|Stay\n"
+        "CAUSAL:\n"
+        "(e1, CAUSE, e2)\n"
+        "(e2, ENABLE, e3)\n"
+    )
+    assert out["conditions"]["temporal_causal_joint"]["linearized"] == (
+        "e1|arrived|Arriving e2|left|Departing e3|stayed|Stay\n"
+        "TEMPEROCAUSAL:\n"
+        "(e1, CAUSE_BEFORE, e2)\n"
+    )
+
+
+def test_independent_section_order():
+    out = linearize.linearize_row(_row_fixture())
+    indep = out["conditions"]["temporal_causal_independent"]["linearized"]
+    assert indep == (
+        "e1|arrived|Arriving e2|left|Departing e3|stayed|Stay\n"
+        "TEMPORAL:\n"
+        "(e2, BEFORE, e1)\n"
+        "CAUSAL:\n"
+        "(e1, CAUSE, e2)\n"
+    )
+    # Belt-and-braces: TEMPORAL header appears before CAUSAL header.
+    assert indep.index("TEMPORAL:") < indep.index("CAUSAL:")
+
+
+def test_parse_error_treated_as_empty_relations():
+    row = _row_fixture()
+    row["conditions"]["temporal"]["parse_error"] = "JSONDecodeError: ..."
+    row["conditions"]["temporal"]["relations"]   = None
+    out = linearize.linearize_row(row)
+    assert out["conditions"]["temporal"]["linearized"] == (
+        "e1|arrived|Arriving e2|left|Departing e3|stayed|Stay\n"
+        "TEMPORAL:\n"
+    )
+
+
+def test_does_not_mutate_input():
+    row = _row_fixture()
+    before = json.dumps(row, sort_keys=True)
+    linearize.linearize_row(row)
+    after = json.dumps(row, sort_keys=True)
+    assert before == after
+
+
+def test_determinism_round_trip():
+    row = _row_fixture()
+    out1 = linearize.linearize_row(row)
+
+    # Shuffle the events and relations to challenge the sort.
+    row2 = _row_fixture()
+    row2["events"] = list(reversed(row2["events"]))
+    row2["conditions"]["causal"]["relations"]["causal_relations"] = list(
+        reversed(row2["conditions"]["causal"]["relations"]["causal_relations"])
+    )
+    row2["conditions"]["temporal_causal_independent"]["relations"]["temporal_relations"] = list(
+        reversed(row2["conditions"]["temporal_causal_independent"]["relations"]["temporal_relations"])
+    )
+    out2 = linearize.linearize_row(row2)
+
+    keys = (
+        "linearized_events_only",
+        ("conditions", "temporal", "linearized"),
+        ("conditions", "causal", "linearized"),
+        ("conditions", "temporal_causal_joint", "linearized"),
+        ("conditions", "temporal_causal_independent", "linearized"),
+    )
+    for k in keys:
+        if isinstance(k, str):
+            assert out1[k] == out2[k], f"determinism broken at {k}"
+        else:
+            a, b = out1, out2
+            for part in k:
+                a, b = a[part], b[part]
+            assert a == b, f"determinism broken at {k}"
