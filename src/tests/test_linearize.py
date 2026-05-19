@@ -102,22 +102,26 @@ def _row_fixture():
 
 def test_linearize_row_populates_five_keys():
     out = linearize.linearize_row(_row_fixture())
-    assert out["linearized_events_only"] == "e1|arrived|Arriving e2|left|Departing e3|stayed|Stay"
-    assert out["conditions"]["temporal"]["linearized"] == (
+    events_block = (
+        "EVENTS:\n"
         "e1|arrived|Arriving e2|left|Departing e3|stayed|Stay\n"
-        "TEMPORAL:\n"
-        "(e2, BEFORE, e1)\n"
+    )
+    assert out["linearized_events_only"] == events_block
+    assert out["conditions"]["temporal"]["linearized"] == (
+        events_block
+        + "TEMPORAL:\n"
+        + "(e2, BEFORE, e1)\n"
     )
     assert out["conditions"]["causal"]["linearized"] == (
-        "e1|arrived|Arriving e2|left|Departing e3|stayed|Stay\n"
-        "CAUSAL:\n"
-        "(e1, CAUSE, e2)\n"
-        "(e2, ENABLE, e3)\n"
+        events_block
+        + "CAUSAL:\n"
+        + "(e1, CAUSE, e2)\n"
+        + "(e2, ENABLE, e3)\n"
     )
     assert out["conditions"]["temporal_causal_joint"]["linearized"] == (
-        "e1|arrived|Arriving e2|left|Departing e3|stayed|Stay\n"
-        "TEMPEROCAUSAL:\n"
-        "(e1, CAUSE_BEFORE, e2)\n"
+        events_block
+        + "TEMPEROCAUSAL:\n"
+        + "(e1, CAUSE_BEFORE, e2)\n"
     )
 
 
@@ -125,14 +129,15 @@ def test_independent_section_order():
     out = linearize.linearize_row(_row_fixture())
     indep = out["conditions"]["temporal_causal_independent"]["linearized"]
     assert indep == (
+        "EVENTS:\n"
         "e1|arrived|Arriving e2|left|Departing e3|stayed|Stay\n"
         "TEMPORAL:\n"
         "(e2, BEFORE, e1)\n"
         "CAUSAL:\n"
         "(e1, CAUSE, e2)\n"
     )
-    # Belt-and-braces: TEMPORAL header appears before CAUSAL header.
-    assert indep.index("TEMPORAL:") < indep.index("CAUSAL:")
+    # Belt-and-braces: EVENTS before TEMPORAL before CAUSAL.
+    assert indep.index("EVENTS:") < indep.index("TEMPORAL:") < indep.index("CAUSAL:")
 
 
 def test_parse_error_treated_as_empty_relations():
@@ -141,6 +146,7 @@ def test_parse_error_treated_as_empty_relations():
     row["conditions"]["temporal"]["relations"]   = None
     out = linearize.linearize_row(row)
     assert out["conditions"]["temporal"]["linearized"] == (
+        "EVENTS:\n"
         "e1|arrived|Arriving e2|left|Departing e3|stayed|Stay\n"
         "TEMPORAL:\n"
     )
@@ -201,7 +207,7 @@ def test_cli_inplace_rewrites_file(tmp_path):
     rewritten = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
     assert len(rewritten) == 1
     r = rewritten[0]
-    assert r["linearized_events_only"].startswith("e1|arrived|Arriving")
+    assert r["linearized_events_only"].startswith("EVENTS:\ne1|arrived|Arriving")
     assert "TEMPORAL:" in r["conditions"]["temporal"]["linearized"]
     assert "CAUSAL:"  in r["conditions"]["causal"]["linearized"]
     assert "TEMPEROCAUSAL:" in r["conditions"]["temporal_causal_joint"]["linearized"]
@@ -219,18 +225,19 @@ def test_real_row_smoke():
     out = linearize.linearize_row(row)
 
     n_events = len(row["events"])
-    events_line = out["linearized_events_only"]
-    assert events_line, "events line is empty"
+    events_block = out["linearized_events_only"]
+    assert events_block.startswith("EVENTS:\n"), "missing EVENTS: header"
+    assert events_block.endswith("\n"), "events block must end with newline"
     # Triggers may contain spaces (e.g., "sets off"), so count eN| boundaries
-    # rather than splitting on space.
-    units = re.findall(r"(?:^| )(e\d+)\|", events_line)
+    # rather than splitting on space. eIDs always follow either a space or a newline.
+    units = re.findall(r"(?:^|[ \n])(e\d+)\|", events_block)
     assert len(units) == n_events, (
         f"expected {n_events} event units, got {len(units)}"
     )
 
     for cond in ("temporal", "causal", "temporal_causal_independent", "temporal_causal_joint"):
         s = out["conditions"][cond]["linearized"]
-        assert s.startswith(events_line + "\n"), f"{cond}: events line not a prefix"
+        assert s.startswith(events_block), f"{cond}: events block not a prefix"
 
     assert "TEMPORAL:"      in out["conditions"]["temporal"]["linearized"]
     assert "CAUSAL:"        in out["conditions"]["causal"]["linearized"]

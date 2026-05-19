@@ -47,14 +47,14 @@ def linearize_row(row: dict) -> dict:
     is treated as an empty relation list — the section header is still emitted.
     """
     out = copy.deepcopy(row)
-    events_line = linearize_events(out["events"])
+    events_block = f"EVENTS:\n{linearize_events(out['events'])}\n"
 
-    out["linearized_events_only"] = events_line
+    out["linearized_events_only"] = events_block
 
     for condition, sections in _CONDITION_SPEC.items():
         block = out["conditions"][condition]
         relations = block.get("relations") or {}
-        parts = [events_line, "\n"]
+        parts = [events_block]
         for subkey, header in sections:
             triples = relations.get(subkey) or []
             parts.append(linearize_relations(triples, header))
