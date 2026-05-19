@@ -20,7 +20,7 @@ def _event(event_id, sent_id, start, trigger, event_type, end=None):
 
 def test_event_unit_format():
     out = linearize.linearize_events([_event("e1", 0, 86, "enters", "Arriving")])
-    assert out == "e1|enters|Arriving"
+    assert out == "(e1|enters|Arriving)"
 
 
 def test_event_sort_textual_order():
@@ -31,7 +31,7 @@ def test_event_sort_textual_order():
         _event("e2", 0, 80, "finds",    "Know"),
     ]
     out = linearize.linearize_events(events)
-    assert out == "e1|enters|Arriving e2|finds|Know e3|exists|Presence"
+    assert out == "(e1|enters|Arriving) (e2|finds|Know) (e3|exists|Presence)"
 
 
 def test_pipe_in_trigger_fails_loud():
@@ -104,7 +104,7 @@ def test_linearize_row_populates_five_keys():
     out = linearize.linearize_row(_row_fixture())
     events_block = (
         "EVENTS:\n"
-        "e1|arrived|Arriving e2|left|Departing e3|stayed|Stay\n"
+        "(e1|arrived|Arriving) (e2|left|Departing) (e3|stayed|Stay)\n"
     )
     assert out["linearized_events_only"] == events_block
     assert out["conditions"]["temporal"]["linearized"] == (
@@ -130,7 +130,7 @@ def test_independent_section_order():
     indep = out["conditions"]["temporal_causal_independent"]["linearized"]
     assert indep == (
         "EVENTS:\n"
-        "e1|arrived|Arriving e2|left|Departing e3|stayed|Stay\n"
+        "(e1|arrived|Arriving) (e2|left|Departing) (e3|stayed|Stay)\n"
         "TEMPORAL:\n"
         "(e2, BEFORE, e1)\n"
         "CAUSAL:\n"
@@ -147,7 +147,7 @@ def test_parse_error_treated_as_empty_relations():
     out = linearize.linearize_row(row)
     assert out["conditions"]["temporal"]["linearized"] == (
         "EVENTS:\n"
-        "e1|arrived|Arriving e2|left|Departing e3|stayed|Stay\n"
+        "(e1|arrived|Arriving) (e2|left|Departing) (e3|stayed|Stay)\n"
         "TEMPORAL:\n"
     )
 
@@ -207,7 +207,7 @@ def test_cli_inplace_rewrites_file(tmp_path):
     rewritten = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
     assert len(rewritten) == 1
     r = rewritten[0]
-    assert r["linearized_events_only"].startswith("EVENTS:\ne1|arrived|Arriving")
+    assert r["linearized_events_only"].startswith("EVENTS:\n(e1|arrived|Arriving)")
     assert "TEMPORAL:" in r["conditions"]["temporal"]["linearized"]
     assert "CAUSAL:"  in r["conditions"]["causal"]["linearized"]
     assert "TEMPEROCAUSAL:" in r["conditions"]["temporal_causal_joint"]["linearized"]
@@ -228,9 +228,8 @@ def test_real_row_smoke():
     events_block = out["linearized_events_only"]
     assert events_block.startswith("EVENTS:\n"), "missing EVENTS: header"
     assert events_block.endswith("\n"), "events block must end with newline"
-    # Triggers may contain spaces (e.g., "sets off"), so count eN| boundaries
-    # rather than splitting on space. eIDs always follow either a space or a newline.
-    units = re.findall(r"(?:^|[ \n])(e\d+)\|", events_block)
+    # Each event is wrapped as (eN|trigger|EVENT_TYPE), so count "(eN|" boundaries.
+    units = re.findall(r"\((e\d+)\|", events_block)
     assert len(units) == n_events, (
         f"expected {n_events} event units, got {len(units)}"
     )
