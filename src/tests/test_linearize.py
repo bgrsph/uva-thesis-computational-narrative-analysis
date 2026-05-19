@@ -37,3 +37,17 @@ def test_pipe_in_trigger_fails_loud():
     bad = _event("e1", 0, 0, "a|b", "Arriving")
     with pytest.raises(AssertionError):
         linearize.linearize_events([bad])
+
+
+def test_relation_sort_by_eid():
+    triples = [
+        {"source": "e17", "target": "e16", "relation": "CAUSE"},
+        {"source": "e12", "target": "e11", "relation": "CAUSE"},
+    ]
+    out = linearize.linearize_relations(triples, "CAUSAL")
+    assert out == "CAUSAL:\n(e12, CAUSE, e11)\n(e17, CAUSE, e16)\n"
+
+
+def test_empty_relations_keeps_header():
+    out = linearize.linearize_relations([], "CAUSAL")
+    assert out == "CAUSAL:\n"

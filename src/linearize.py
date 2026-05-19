@@ -13,3 +13,12 @@ def linearize_events(events: list[dict]) -> str:
         assert "|" not in event_type, f"event_type contains '|': {event_type!r}"
         units.append(f"{ev['event_id']}|{trigger}|{event_type}")
     return " ".join(units)
+
+
+def linearize_relations(triples: list[dict], header: str) -> str:
+    """Sort triples by (int(src[1:]), int(tgt[1:])) and format under <HEADER>:.
+    Empty list still emits the header line."""
+    parts = [f"{header}:\n"]
+    for t in sorted(triples, key=lambda r: (int(r["source"][1:]), int(r["target"][1:]))):
+        parts.append(f"({t['source']}, {t['relation']}, {t['target']})\n")
+    return "".join(parts)
