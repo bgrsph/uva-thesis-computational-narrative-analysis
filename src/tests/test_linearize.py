@@ -1,5 +1,6 @@
 """Unit tests for src/linearize.py — the UNI-26 canonical linearization templater."""
 import json
+import re
 
 import pytest
 
@@ -183,3 +184,56 @@ def test_determinism_round_trip():
             for part in k:
                 a, b = a[part], b[part]
             assert a == b, f"determinism broken at {k}"
+
+
+from pathlib import Path
+
+
+def test_cli_inplace_rewrites_file(tmp_path):
+    row = _row_fixture()
+    path = tmp_path / "experiment.jsonl"
+    with path.open("w", encoding="utf-8") as f:
+        f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+    rc = linearize.cli(["--in", str(path), "--inplace"])
+    assert rc == 0
+
+    rewritten = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    assert len(rewritten) == 1
+    r = rewritten[0]
+    assert r["linearized_events_only"].startswith("e1|arrived|Arriving")
+    assert "TEMPORAL:" in r["conditions"]["temporal"]["linearized"]
+    assert "CAUSAL:"  in r["conditions"]["causal"]["linearized"]
+    assert "TEMPEROCAUSAL:" in r["conditions"]["temporal_causal_joint"]["linearized"]
+    # No stray .tmp left behind.
+    assert not (tmp_path / "experiment.jsonl.tmp").exists()
+
+
+def test_real_row_smoke():
+    """Reads the first row of data/results/experiment.jsonl and verifies all
+    5 linearized keys are present and shaped correctly."""
+    path = Path("data/results/experiment.jsonl")
+    if not path.exists():
+        pytest.skip("data/results/experiment.jsonl not present in this checkout")
+    row = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+    out = linearize.linearize_row(row)
+
+    n_events = len(row["events"])
+    events_line = out["linearized_events_only"]
+    assert events_line, "events line is empty"
+    # Triggers may contain spaces (e.g., "sets off"), so count eN| boundaries
+    # rather than splitting on space.
+    units = re.findall(r"(?:^| )(e\d+)\|", events_line)
+    assert len(units) == n_events, (
+        f"expected {n_events} event units, got {len(units)}"
+    )
+
+    for cond in ("temporal", "causal", "temporal_causal_independent", "temporal_causal_joint"):
+        s = out["conditions"][cond]["linearized"]
+        assert s.startswith(events_line + "\n"), f"{cond}: events line not a prefix"
+
+    assert "TEMPORAL:"      in out["conditions"]["temporal"]["linearized"]
+    assert "CAUSAL:"        in out["conditions"]["causal"]["linearized"]
+    assert "TEMPORAL:"      in out["conditions"]["temporal_causal_independent"]["linearized"]
+    assert "CAUSAL:"        in out["conditions"]["temporal_causal_independent"]["linearized"]
+    assert "TEMPEROCAUSAL:" in out["conditions"]["temporal_causal_joint"]["linearized"]

@@ -61,3 +61,51 @@ def linearize_row(row: dict) -> dict:
         block["linearized"] = "".join(parts)
 
     return out
+
+
+import argparse
+import json
+import os
+from pathlib import Path
+from typing import Sequence
+
+
+def _stream_linearize(in_path: Path, out_path: Path) -> int:
+    """Read in_path line by line, apply linearize_row, write to out_path."""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    n = 0
+    with in_path.open("r", encoding="utf-8") as fin, out_path.open("w", encoding="utf-8") as fout:
+        for line in fin:
+            line = line.strip()
+            if not line:
+                continue
+            row = json.loads(line)
+            new_row = linearize_row(row)
+            fout.write(json.dumps(new_row, ensure_ascii=False) + "\n")
+            n += 1
+    return n
+
+
+def main(in_path: Path, inplace: bool) -> int:
+    if not inplace:
+        raise SystemExit("Only --inplace is supported (writes back to --in).")
+    tmp = in_path.with_suffix(in_path.suffix + ".tmp")
+    _stream_linearize(in_path, tmp)
+    os.replace(tmp, in_path)
+    return 0
+
+
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    ap = argparse.ArgumentParser(description="Linearize experiment.jsonl per condition (UNI-26).")
+    ap.add_argument("--in", dest="in_path", required=True, type=Path, help="experiment.jsonl input")
+    ap.add_argument("--inplace", action="store_true", required=True, help="rewrite the input file atomically")
+    return ap.parse_args(argv)
+
+
+def cli(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv)
+    return main(args.in_path, args.inplace)
+
+
+if __name__ == "__main__":   # pragma: no cover
+    raise SystemExit(cli())
