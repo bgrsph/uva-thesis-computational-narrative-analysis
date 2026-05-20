@@ -42,7 +42,7 @@ def _build_model(model_id: str):
 def run(args: argparse.Namespace) -> int:
     model_id, task = ENCODER_REGISTRY[args.encoder]
     model = _build_model(model_id)
-    dim = int(model.get_sentence_embedding_dimension())
+    dim = int(model.get_embedding_dimension())
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.input.open("r", encoding="utf-8") as fin, \
