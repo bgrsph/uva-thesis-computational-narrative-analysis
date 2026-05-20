@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 from typing import Sequence
 
-from models.embed.encoders import ENCODER_REGISTRY, encode
+from models.embed.encoders import ENCODER_CONDITIONS, ENCODER_REGISTRY, encode
 
 # Pin the iteration order so downstream code can rely on it.
 CONDITION_KEYS: tuple[str, ...] = (
@@ -21,16 +21,17 @@ CONDITION_KEYS: tuple[str, ...] = (
 )
 
 
-def _gather_inputs(row: dict) -> list[str]:
-    """Return the six input strings for one row, in CONDITION_KEYS order."""
-    return [
-        row["text"],
-        row["linearized_events_only"],
-        row["conditions"]["temporal"]["linearized"],
-        row["conditions"]["causal"]["linearized"],
-        row["conditions"]["temporal_causal_independent"]["linearized"],
-        row["conditions"]["temporal_causal_joint"]["linearized"],
-    ]
+def _gather_inputs(row: dict, conditions: tuple[str, ...] = CONDITION_KEYS) -> list[str]:
+    """Return the input strings for one row, in `conditions` order."""
+    by_key = {
+        "raw_text":                    row["text"],
+        "events_only":                 row["linearized_events_only"],
+        "temporal":                    row["conditions"]["temporal"]["linearized"],
+        "causal":                      row["conditions"]["causal"]["linearized"],
+        "temporal_causal_independent": row["conditions"]["temporal_causal_independent"]["linearized"],
+        "temporal_causal_joint":       row["conditions"]["temporal_causal_joint"]["linearized"],
+    }
+    return [by_key[c] for c in conditions]
 
 
 def _build_model(model_id: str):
@@ -41,6 +42,7 @@ def _build_model(model_id: str):
 
 def run(args: argparse.Namespace) -> int:
     model_id, task = ENCODER_REGISTRY[args.encoder]
+    conditions = ENCODER_CONDITIONS.get(args.encoder, CONDITION_KEYS)
     model = _build_model(model_id)
     dim = int(model.get_embedding_dimension())
 
@@ -52,7 +54,7 @@ def run(args: argparse.Namespace) -> int:
             if not line:
                 continue
             row = json.loads(line)
-            texts = _gather_inputs(row)
+            texts = _gather_inputs(row, conditions)
             vecs = encode(model, texts, task, batch_size=args.batch_size)
             out_row = {
                 "wikidata_id": row["wikidata_id"],
@@ -61,7 +63,7 @@ def run(args: argparse.Namespace) -> int:
                 "model_id":    model_id,
                 "task":        task,
                 "dim":         dim,
-                "vectors":     {k: vecs[j].tolist() for j, k in enumerate(CONDITION_KEYS)},
+                "vectors":     {c: vecs[j].tolist() for j, c in enumerate(conditions)},
             }
             fout.write(json.dumps(out_row) + "\n")
             print(f"row {i}: {row['wikidata_id']}/{row['summary_id']}", flush=True)

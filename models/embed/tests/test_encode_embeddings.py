@@ -90,6 +90,35 @@ def test_sbert_writes_null_task(tmp_path, monkeypatch):
     assert row["task"] is None
 
 
+def test_story_emb_writes_raw_text_only(tmp_path, monkeypatch):
+    """story_emb's ENCODER_CONDITIONS override restricts output to {"raw_text"}."""
+    in_path = tmp_path / "experiment.jsonl"
+    out_path = tmp_path / "story_emb.jsonl"
+    with in_path.open("w") as f:
+        for r in (_make_row("w1", "en"), _make_row("w2", "de")):
+            f.write(json.dumps(r) + "\n")
+
+    monkeypatch.setattr(drv, "_build_model", lambda mid: FakeSentenceTransformer(dim=4))
+
+    rc = drv.main([
+        "--encoder", "story_emb",
+        "--input",   str(in_path),
+        "--output",  str(out_path),
+    ])
+    assert rc == 0
+
+    rows = [json.loads(l) for l in out_path.read_text().splitlines()]
+    assert len(rows) == 2
+    for r in rows:
+        assert r["encoder_key"] == "story_emb"
+        assert r["model_id"]    == "uhhlt/story-emb"
+        assert r["task"]        == "Retrieve stories with a similar narrative to the given story."
+        assert r["dim"]         == 4
+        # The only condition embedded for story_emb is raw_text — no events_only, no temporal, etc.
+        assert set(r["vectors"].keys()) == {"raw_text"}
+        assert isinstance(r["vectors"]["raw_text"], list) and len(r["vectors"]["raw_text"]) == 4
+
+
 def test_killed_job_leaves_clean_prefix(tmp_path, monkeypatch):
     """A fault midway through encoding leaves the prefix of completed rows intact."""
     in_path = tmp_path / "experiment.jsonl"
