@@ -50,3 +50,19 @@ def test_registry_contract():
         assert task is None or isinstance(task, str)
     assert "e5_mistral" in ENCODER_REGISTRY
     assert "sbert_mpnet" in ENCODER_REGISTRY
+
+
+def test_story_emb_registered():
+    assert "story_emb" in ENCODER_REGISTRY
+    model_id, task = ENCODER_REGISTRY["story_emb"]
+    assert model_id == "uhhlt/story-emb"
+    # StoryEmbed paper §3 confirms the same E5 instruction prefix is used.
+    assert task == ENCODER_REGISTRY["e5_mistral"][1]
+
+
+def test_story_emb_conditions_override():
+    from models.embed.encoders import ENCODER_CONDITIONS
+    assert ENCODER_CONDITIONS["story_emb"] == ("raw_text",)
+    # e5/sbert have no override — default (all six) applies via .get() at call site.
+    assert "e5_mistral" not in ENCODER_CONDITIONS
+    assert "sbert_mpnet" not in ENCODER_CONDITIONS

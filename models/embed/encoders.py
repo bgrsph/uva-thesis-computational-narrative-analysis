@@ -14,7 +14,19 @@ ENCODER_REGISTRY: dict[str, tuple[str, str | None]] = {
     "e5_mistral":  ("intfloat/e5-mistral-7b-instruct",
                     "Retrieve stories with a similar narrative to the given story."),
     "sbert_mpnet": ("sentence-transformers/all-mpnet-base-v2", None),
-    # Add new encoder keys here — e.g. "sbert_minilm" — no other code changes needed.
+    "story_emb":   ("uhhlt/story-emb",
+                    "Retrieve stories with a similar narrative to the given story."),
+    # Add new encoder keys here — no other code changes needed.
+}
+
+
+# Per-encoder condition override. Default is "embed all six conditions"
+# (CONDITION_KEYS in the driver). Entries here override that to a subset.
+# StoryEmbed is the ceiling encoder, trained on raw narrative text — embedding
+# it on the five linearized conditions would be out-of-domain and redundant
+# with e5_mistral, which shares the same backbone weights (thesis §3.4).
+ENCODER_CONDITIONS: dict[str, tuple[str, ...]] = {
+    "story_emb": ("raw_text",),
 }
 
 
