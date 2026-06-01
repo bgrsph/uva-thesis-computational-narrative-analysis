@@ -8,7 +8,12 @@ import json
 from pathlib import Path
 from typing import Sequence
 
-from models.embed.encoders import ENCODER_CONDITIONS, ENCODER_REGISTRY, encode
+from models.embed.encoders import (
+    ENCODER_CONDITIONS,
+    ENCODER_INIT_KWARGS,
+    ENCODER_REGISTRY,
+    encode,
+)
 
 # Pin the iteration order so downstream code can rely on it.
 CONDITION_KEYS: tuple[str, ...] = (
@@ -34,16 +39,16 @@ def _gather_inputs(row: dict, conditions: tuple[str, ...] = CONDITION_KEYS) -> l
     return [by_key[c] for c in conditions]
 
 
-def _build_model(model_id: str):
+def _build_model(model_id: str, **kwargs):
     """Build the SentenceTransformer. Isolated so tests can monkeypatch."""
     from sentence_transformers import SentenceTransformer
-    return SentenceTransformer(model_id)
+    return SentenceTransformer(model_id, **kwargs)
 
 
 def run(args: argparse.Namespace) -> int:
     model_id, task = ENCODER_REGISTRY[args.encoder]
     conditions = ENCODER_CONDITIONS.get(args.encoder, CONDITION_KEYS)
-    model = _build_model(model_id)
+    model = _build_model(model_id, **ENCODER_INIT_KWARGS.get(args.encoder, {}))
     dim = int(model.get_embedding_dimension())
 
     args.output.parent.mkdir(parents=True, exist_ok=True)

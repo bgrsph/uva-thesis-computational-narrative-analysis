@@ -16,6 +16,8 @@ ENCODER_REGISTRY: dict[str, tuple[str, str | None]] = {
     "sbert_mpnet": ("sentence-transformers/all-mpnet-base-v2", None),
     "story_emb":   ("uhhlt/story-emb",
                     "Retrieve stories with a similar narrative to the given story."),
+    "qwen3_emb_0p6b": ("Qwen/Qwen3-Embedding-0.6B",
+                       "Retrieve stories with a similar narrative to the given story."),
     # Add new encoder keys here — no other code changes needed.
 }
 
@@ -27,6 +29,15 @@ ENCODER_REGISTRY: dict[str, tuple[str, str | None]] = {
 # with e5_mistral, which shares the same backbone weights (thesis §3.4).
 ENCODER_CONDITIONS: dict[str, tuple[str, ...]] = {
     "story_emb": ("raw_text",),
+}
+
+
+# Per-encoder SentenceTransformer constructor kwargs. Decoder-only embedders
+# use last-token (EOS) pooling, which requires left-padding so the pooled
+# token is the actual content tail rather than a pad token. Qwen3-Embedding's
+# model card states this explicitly.
+ENCODER_INIT_KWARGS: dict[str, dict] = {
+    "qwen3_emb_0p6b": {"tokenizer_kwargs": {"padding_side": "left"}},
 }
 
 

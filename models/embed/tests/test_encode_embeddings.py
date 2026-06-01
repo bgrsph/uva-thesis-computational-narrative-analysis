@@ -119,6 +119,31 @@ def test_story_emb_writes_raw_text_only(tmp_path, monkeypatch):
         assert isinstance(r["vectors"]["raw_text"], list) and len(r["vectors"]["raw_text"]) == 4
 
 
+def test_qwen3_emb_0p6b_forwards_init_kwargs(tmp_path, monkeypatch):
+    """The qwen3 entry in ENCODER_INIT_KWARGS must reach SentenceTransformer()."""
+    in_path = tmp_path / "experiment.jsonl"
+    out_path = tmp_path / "qwen3_emb_0p6b.jsonl"
+    in_path.write_text(json.dumps(_make_row("w1", "en")) + "\n")
+
+    seen: dict = {}
+
+    def fake_build(model_id: str, **kw):
+        seen["model_id"] = model_id
+        seen["kwargs"] = kw
+        return FakeSentenceTransformer(dim=4)
+
+    monkeypatch.setattr(drv, "_build_model", fake_build)
+
+    drv.main([
+        "--encoder", "qwen3_emb_0p6b",
+        "--input",   str(in_path),
+        "--output",  str(out_path),
+    ])
+
+    assert seen["model_id"] == "Qwen/Qwen3-Embedding-0.6B"
+    assert seen["kwargs"]   == {"tokenizer_kwargs": {"padding_side": "left"}}
+
+
 def test_killed_job_leaves_clean_prefix(tmp_path, monkeypatch):
     """A fault midway through encoding leaves the prefix of completed rows intact."""
     in_path = tmp_path / "experiment.jsonl"

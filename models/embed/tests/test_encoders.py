@@ -66,3 +66,24 @@ def test_story_emb_conditions_override():
     # e5/sbert have no override — default (all six) applies via .get() at call site.
     assert "e5_mistral" not in ENCODER_CONDITIONS
     assert "sbert_mpnet" not in ENCODER_CONDITIONS
+
+
+def test_qwen3_emb_0p6b_registered():
+    assert "qwen3_emb_0p6b" in ENCODER_REGISTRY
+    model_id, task = ENCODER_REGISTRY["qwen3_emb_0p6b"]
+    assert model_id == "Qwen/Qwen3-Embedding-0.6B"
+    # Qwen3-Embedding uses the same `Instruct: {task}\nQuery: {text}` template
+    # as E5-Mistral, so the existing encode() helper applies the prefix correctly.
+    assert task == ENCODER_REGISTRY["e5_mistral"][1]
+
+
+def test_qwen3_emb_0p6b_left_padding():
+    """Decoder-only embedders need left-padding for last-token pooling."""
+    from models.embed.encoders import ENCODER_INIT_KWARGS
+    assert ENCODER_INIT_KWARGS["qwen3_emb_0p6b"] == {
+        "tokenizer_kwargs": {"padding_side": "left"},
+    }
+    # No init kwargs needed for the existing encoders.
+    assert "e5_mistral" not in ENCODER_INIT_KWARGS
+    assert "sbert_mpnet" not in ENCODER_INIT_KWARGS
+    assert "story_emb" not in ENCODER_INIT_KWARGS
