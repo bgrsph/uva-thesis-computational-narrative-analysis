@@ -218,4 +218,5 @@ data/
 .claude/*
 .venv-maven-train/
 models/bert_crf/tests
-
+src/tests
+  conftest.py
