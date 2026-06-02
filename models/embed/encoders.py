@@ -36,8 +36,10 @@ ENCODER_CONDITIONS: dict[str, tuple[str, ...]] = {
 # use last-token (EOS) pooling, which requires left-padding so the pooled
 # token is the actual content tail rather than a pad token. Qwen3-Embedding's
 # model card states this explicitly.
+# sentence-transformers 5.5.1 renamed `tokenizer_kwargs` -> `processor_kwargs`;
+# the old name still works but warns. Pin guarantees 5.5.1, so use the new name.
 ENCODER_INIT_KWARGS: dict[str, dict] = {
-    "qwen3_emb_0p6b": {"tokenizer_kwargs": {"padding_side": "left"}},
+    "qwen3_emb_0p6b": {"processor_kwargs": {"padding_side": "left"}},
 }
 
 

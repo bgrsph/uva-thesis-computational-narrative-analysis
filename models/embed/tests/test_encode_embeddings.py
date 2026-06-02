@@ -141,7 +141,7 @@ def test_qwen3_emb_0p6b_forwards_init_kwargs(tmp_path, monkeypatch):
     ])
 
     assert seen["model_id"] == "Qwen/Qwen3-Embedding-0.6B"
-    assert seen["kwargs"]   == {"tokenizer_kwargs": {"padding_side": "left"}}
+    assert seen["kwargs"]   == {"processor_kwargs": {"padding_side": "left"}}
 
 
 def test_killed_job_leaves_clean_prefix(tmp_path, monkeypatch):

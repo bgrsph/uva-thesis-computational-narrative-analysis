@@ -80,8 +80,9 @@ def test_qwen3_emb_0p6b_registered():
 def test_qwen3_emb_0p6b_left_padding():
     """Decoder-only embedders need left-padding for last-token pooling."""
     from models.embed.encoders import ENCODER_INIT_KWARGS
+    # sentence-transformers 5.5.1 renamed tokenizer_kwargs -> processor_kwargs.
     assert ENCODER_INIT_KWARGS["qwen3_emb_0p6b"] == {
-        "tokenizer_kwargs": {"padding_side": "left"},
+        "processor_kwargs": {"padding_side": "left"},
     }
     # No init kwargs needed for the existing encoders.
     assert "e5_mistral" not in ENCODER_INIT_KWARGS

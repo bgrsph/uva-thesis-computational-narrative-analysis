@@ -1,7 +1,7 @@
 condition: causal
 
 system: |
-  You are an expert computational narratologist. Given a short narrative whose
+  You are an expert in extracting causal relations between events. Given a short narrative whose
   events have been pre-extracted and inlined as [eID|trigger|EVENT_TYPE] markers,
   identify the CAUSAL relations between these events (if such relation(s) exists).
 
