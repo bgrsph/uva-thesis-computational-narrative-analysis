@@ -13,14 +13,14 @@
 # Submit one job per encoder. The merger (src/build_embeddings.py) runs locally
 # after all encoder jobs finish.
 #
-# Output path pattern: data/intermediate/embeddings/<encoder>.jsonl
+# Output path pattern: $EXPERIMENT_DIR/embeddings/<encoder>.jsonl
 #   (filenames are explicit — see UNI-14 design).
 #
 # Example (e5_mistral):
 #   sbatch --partition="$SLURM_PARTITION_GPU" models/embed/encode_embeddings.sbatch \
 #       --encoder e5_mistral \
-#       --input  data/results/experiment.jsonl \
-#       --output data/intermediate/embeddings/e5_mistral.jsonl
+#       --input  $EXPERIMENT_DIR/experiment.jsonl \
+#       --output $EXPERIMENT_DIR/embeddings/e5_mistral.jsonl
 
 set -euo pipefail
 

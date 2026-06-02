@@ -14,12 +14,12 @@
 # The fourth condition (temporal_causal_independent) is composed locally from
 # temporal + causal — no sbatch — see models/llama/compose_tcindep.py. (UNI-65)
 #
-# Output path pattern: data/intermediate/llama_runs/<condition>.jsonl
+# Output path pattern: $EXPERIMENT_DIR/llama_runs/<condition>.jsonl
 #
 # Example (causal):
 #   sbatch --partition="$SLURM_PARTITION_GPU" models/llama/infer_relations.sbatch \
-#       --input data/intermediate/tma_subset_events_full.jsonl \
-#       --output data/intermediate/llama_runs/causal.jsonl \
+#       --input $EXPERIMENT_DIR/tma_subset_events_full.${SPLIT}.jsonl \
+#       --output $EXPERIMENT_DIR/llama_runs/causal.jsonl \
 #       --condition causal --sample-size 3
 #
 # All CLI args are forwarded to infer_relations.py. See UNI-66 spec §3.3, §6, §7.3.

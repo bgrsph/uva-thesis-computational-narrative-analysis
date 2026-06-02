@@ -10,8 +10,8 @@
 # sbatch command line:
 #
 #   sbatch --partition="$SLURM_PARTITION_CPU" models/bert_crf/infer_tma.sbatch \
-#       --input      data/intermediate/tma_subset.jsonl \
-#       --output     data/intermediate/tma_subset_events.jsonl \
+#       --input      $EXPERIMENT_DIR/tma_subset.${SPLIT}.jsonl \
+#       --output     $EXPERIMENT_DIR/tma_subset_events_full.${SPLIT}.jsonl \
 #       --checkpoint data/intermediate/models/bert_crf \
 #       --sample-size 10
 #

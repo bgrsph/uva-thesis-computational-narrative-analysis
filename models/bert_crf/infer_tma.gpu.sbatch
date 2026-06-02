@@ -14,8 +14,8 @@
 # sbatch command line:
 #
 #   sbatch --partition="$SLURM_PARTITION_GPU" models/bert_crf/infer_tma.gpu.sbatch \
-#       --input      data/intermediate/tma_subset.jsonl \
-#       --output     data/intermediate/tma_subset_events_full.jsonl \
+#       --input      $EXPERIMENT_DIR/tma_subset.${SPLIT}.jsonl \
+#       --output     $EXPERIMENT_DIR/tma_subset_events_full.${SPLIT}.jsonl \
 #       --checkpoint data/intermediate/models/bert_crf \
 #       --batch-size 128
 
