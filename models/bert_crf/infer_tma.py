@@ -61,6 +61,73 @@ def bio_to_spans(
     return spans
 
 
+def first_subword_mask(word_ids: List) -> List[bool]:
+    """True at the first sub-word of each word; False at continuation sub-words
+    and special tokens (``word_id is None``).
+
+    Mirrors the training convention (utils_maven.py:125-128) where a word's label
+    lives only on its first sub-word and continuations are masked (-100). Used to
+    build the CRF label mask so inference decodes exactly the positions the model
+    was trained on — one per word.
+    """
+    mask: List[bool] = []
+    prev = object()  # sentinel: never equal to any word_id
+    for wid in word_ids:
+        mask.append(wid is not None and wid != prev)
+        prev = wid
+    return mask
+
+
+def words_from_subwords(
+    word_ids: List,
+    offsets: List[Tuple[int, int]],
+    bio_tags: List[str],
+) -> Tuple[List[str], List[Tuple[int, int]]]:
+    """Collapse per-sub-word BIO tags to per-word ``(tag, char-span)``.
+
+    Each word's tag is read from its FIRST sub-word (the only position the model
+    was trained to label); the word's char span runs from the first sub-word's
+    start to the last sub-word's end. Special tokens (``word_id is None``) are
+    skipped. Returns ``(word_tags, word_offsets)`` ready for :func:`bio_to_spans`,
+    so triggers come out as whole words instead of sub-word slices ("su", "cing").
+    """
+    if not (len(word_ids) == len(offsets) == len(bio_tags)):
+        raise ValueError(
+            f"length mismatch: {len(word_ids)} word_ids, {len(offsets)} offsets, "
+            f"{len(bio_tags)} tags"
+        )
+
+    word_tags: List[str] = []
+    word_offsets: List[Tuple[int, int]] = []
+    i, n = 0, len(word_ids)
+    while i < n:
+        wid = word_ids[i]
+        if wid is None:
+            i += 1
+            continue
+        start, end = offsets[i][0], offsets[i][1]
+        tag = bio_tags[i]                      # first sub-word carries the label
+        j = i + 1
+        while j < n and word_ids[j] == wid:    # extend span over continuations
+            end = offsets[j][1]
+            j += 1
+        word_tags.append(tag)
+        word_offsets.append((start, end))
+        i = j
+    return word_tags, word_offsets
+
+
+def indexed_nonempty_sentences(sentences: List[str]) -> List[Tuple[int, str]]:
+    """``[(sent_id, text), ...]`` for sentences with non-whitespace content.
+
+    Blank sentences are skipped: they contain no events, and (since we mask the
+    CRF to first-sub-words only) an empty sentence yields zero decodable
+    positions, which crashes the CRF (``_score_sentence`` indexes ``length-1``
+    → -1). Surviving sentences keep their original ``sent_id``.
+    """
+    return [(i, s) for i, s in enumerate(sentences) if str(s).strip()]
+
+
 def _pick_device() -> str:
     import torch
     if torch.cuda.is_available():
@@ -139,8 +206,14 @@ def main() -> int:
             sentences: List[str] = row["sentences"]
             events: List[dict] = []
 
-            for batch_start in range(0, len(sentences), args.batch_size):
-                batch = sentences[batch_start : batch_start + args.batch_size]
+            # Drop blank sentences up front (no events; an empty sentence would
+            # give the CRF a zero-length sequence and crash). Surviving sentences
+            # keep their original sent_id via the (sent_id, text) pairs.
+            indexed = indexed_nonempty_sentences(sentences)
+            for batch_start in range(0, len(indexed), args.batch_size):
+                chunk    = indexed[batch_start : batch_start + args.batch_size]
+                sent_ids = [sid for sid, _ in chunk]
+                batch    = [txt for _, txt in chunk]
                 enc = tokenizer(
                     batch,
                     return_offsets_mapping=True,
@@ -154,28 +227,44 @@ def main() -> int:
                         f"sentence in {row['wikidata_id']}/{row['summary_id']} exceeds 128 subwords; "
                         "post-§2 filter should have prevented this"
                     )
-                offsets_list = enc.pop("offset_mapping").tolist()
-                attn_list    = enc["attention_mask"].tolist()
-                enc          = {k: v.to(device) for k, v in enc.items()}
+                word_ids_list = [enc.word_ids(b) for b in range(len(batch))]
+                offsets_list  = enc.pop("offset_mapping").tolist()
+                attn_list     = enc["attention_mask"].tolist()
+                enc           = {k: v.to(device) for k, v in enc.items()}
 
-                # We pass dummy labels so forward() takes the with-labels
-                # branch. The no-labels branch in bert_crf.py creates a Float
-                # `temp_labels` tensor and assigns Long CRF outputs into it;
-                # newer torch refuses the dtype mismatch.
-                # Padding positions need pad_id (-100) so unpad_crf's masking
-                # selects the same number of elements the CRF returns.
+                # Dummy labels select which positions the CRF decodes. We pass
+                # them so forward() takes the with-labels branch (the no-labels
+                # branch mixes Float/Long tensors and crashes on newer torch).
+                # Mirroring training (utils_maven.py:125-128), ONLY the first
+                # sub-word of each word is decoded (label 0); special tokens and
+                # continuation sub-words are pad_id (-100), so the CRF runs over
+                # one position per word — exactly as it was trained/evaluated.
+                # (The previous code marked every real token, making the CRF
+                # decode continuation sub-words it never learned and the decoder
+                # slice triggers into fragments like "su"/"cing".)
+                first_mask = torch.tensor(
+                    [first_subword_mask(w) for w in word_ids_list],
+                    dtype=torch.bool, device=enc["input_ids"].device,
+                )
                 dummy_labels = torch.full_like(enc["input_ids"], pad_id)
-                dummy_labels[enc["attention_mask"] == 1] = 0
+                dummy_labels[first_mask] = 0
                 with torch.no_grad():
                     out = model(pad_token_label_id=pad_id, labels=dummy_labels, **enc)
                 best_path = out[-1].cpu().tolist()  # forward returns (..., best_path)
 
-                for off_in_batch, (tag_ids, off, mask) in enumerate(zip(best_path, offsets_list, attn_list)):
+                for off_in_batch, (tag_ids, wids, off, mask) in enumerate(
+                    zip(best_path, word_ids_list, offsets_list, attn_list)
+                ):
                     n = sum(mask)
-                    bio_tags = [id2label[t] for t in tag_ids[:n]]
-                    sent_id  = batch_start + off_in_batch
+                    # best_path is -100 at non-decoded positions (continuations /
+                    # specials); .get(..., "O") guards those. words_from_subwords
+                    # reads only first-sub-word positions, which hold real tags,
+                    # and emits whole-word char spans.
+                    bio_tags = [id2label.get(t, "O") for t in tag_ids[:n]]
+                    sent_id  = sent_ids[off_in_batch]
                     sent     = sentences[sent_id]
-                    for (s, e, etype) in bio_to_spans(bio_tags, off[:n]):
+                    word_tags, word_offsets = words_from_subwords(wids[:n], off[:n], bio_tags)
+                    for (s, e, etype) in bio_to_spans(word_tags, word_offsets):
                         events.append({
                             "event_id":   f"e{len(events) + 1}",
                             "sent_id":    sent_id,
