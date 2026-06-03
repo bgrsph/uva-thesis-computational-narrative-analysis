@@ -4,25 +4,6 @@
 #SBATCH --time=48:00:00
 #SBATCH --output=%x-%j.out
 #SBATCH --error=%x-%j.err
-#
-# GPU-partition wrapper around models/llama/infer_relations.py.
-# Partition is NOT set in the header (variable expansion does not work inside
-# #SBATCH lines on most clusters). Submitter must pass --partition= on the
-# sbatch command line.
-#
-# Submit one job per condition (3 total: temporal, causal, temporal_causal_joint).
-# The fourth condition (temporal_causal_independent) is composed locally from
-# temporal + causal — no sbatch — see models/llama/compose_tcindep.py. (UNI-65)
-#
-# Output path pattern: $EXPERIMENT_DIR/llama_runs/<condition>.jsonl
-#
-# Example (causal):
-#   sbatch --partition="$SLURM_PARTITION_GPU" models/llama/infer_relations.sbatch \
-#       --input $EXPERIMENT_DIR/tma_subset_events_full.${SPLIT}.jsonl \
-#       --output $EXPERIMENT_DIR/llama_runs/causal.jsonl \
-#       --condition causal --sample-size 3
-#
-# All CLI args are forwarded to infer_relations.py. See UNI-66 spec §3.3, §6, §7.3.
 
 set -euo pipefail
 
