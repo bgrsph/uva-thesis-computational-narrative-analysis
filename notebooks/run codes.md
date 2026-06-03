@@ -46,3 +46,23 @@ for C in causal temporal temporal_causal_joint; do
     --condition   $C \
     --sample-size 300
 done
+
+
+For 20 minutes of expected time: 
+
+
+  sbatch --partition="$SLURM_PARTITION_GPU" --time=00:60:00 -J embed-e5_mistral
+  models/embed/encode_embeddings.sbatch --encoder e5_mistral --input $EXPERIMENT_DIR/experiment.jsonl --output $EXPERIMENT_DIR/embeddings/e5_mistral.jsonl
+
+
+  sbatch --partition="$SLURM_PARTITION_GPU" --time=00:60:00 -J embed-sbert_mpnet
+  models/embed/encode_embeddings.sbatch --encoder sbert_mpnet --input $EXPERIMENT_DIR/experiment.jsonl --output $EXPERIMENT_DIR/embeddings/sbert_mpnet.jsonl
+
+
+  sbatch --partition="$SLURM_PARTITION_GPU" --time=00:60:00 -J embed-story_emb
+  models/embed/encode_embeddings.sbatch --encoder story_emb --input $EXPERIMENT_DIR/experiment.jsonl --output $EXPERIMENT_DIR/embeddings/story_emb.jsonl
+
+
+  sbatch --partition="$SLURM_PARTITION_GPU" --time=00:60:00 -J embed-qwen3_emb_0p6b
+  models/embed/encode_embeddings.sbatch --encoder qwen3_emb_0p6b --input $EXPERIMENT_DIR/experiment.jsonl --output $EXPERIMENT_DIR/embeddings/qwen3_emb_0p6b.jsonl
+
