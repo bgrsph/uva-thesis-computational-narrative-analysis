@@ -64,6 +64,60 @@ def linearize_row(row: dict) -> dict:
     return out
 
 
+# --- Hybrid variant: relation endpoints carry their surface form -------------
+# The original `linearize_relations` renders endpoints as bare ids, e.g.
+# `(e2, BEFORE, e1)`. The hybrid form below renders each endpoint as
+# `eID:trigger|EVENT_TYPE`, e.g. `(e2:left|Departing, BEFORE, e1:arrived|Arriving)`,
+# so the embedder sees the surface trigger and type instead of an opaque pointer,
+# while the id still disambiguates repeated triggers. The EVENTS block and the
+# events-only condition are unchanged.
+
+def _event_lookup(events: list[dict]) -> dict:
+    """Map event_id -> (trigger, event_type) for hybrid relation linearization."""
+    return {ev["event_id"]: (ev["trigger"], ev["event_type"]) for ev in events}
+
+
+def linearize_relations_hybrid(triples: list[dict], header: str,
+                               event_lookup: dict) -> str:
+    """Like `linearize_relations`, but each endpoint is rendered as
+    `eID:trigger|EVENT_TYPE` instead of the bare `eID`. Endpoints missing from
+    `event_lookup` (e.g. an id the LLM emitted that is not in `events`) fall back
+    to the bare id. Sorting and empty-list behaviour match `linearize_relations`."""
+    def render(eid: str) -> str:
+        info = event_lookup.get(eid)
+        if info is None:
+            return eid
+        trigger, event_type = info
+        return f"{eid}:{trigger}|{event_type}"
+
+    parts = [f"{header}:\n"]
+    for t in sorted(triples, key=lambda r: (int(r["source"][1:]), int(r["target"][1:]))):
+        parts.append(f"({render(t['source'])}, {t['relation']}, {render(t['target'])})\n")
+    return "".join(parts)
+
+
+def linearize_row_hybrid(row: dict) -> dict:
+    """Hybrid counterpart of `linearize_row`: relation endpoints carry their
+    trigger and event type (`eID:trigger|EVENT_TYPE`). The EVENTS block and the
+    events-only condition are identical to `linearize_row`. Does not mutate `row`."""
+    out = copy.deepcopy(row)
+    events_block = f"EVENTS:\n{linearize_events(out['events'])}\n"
+    event_lookup = _event_lookup(out["events"])
+
+    out["linearized_events_only"] = events_block
+
+    for condition, sections in _CONDITION_SPEC.items():
+        block = out["conditions"][condition]
+        relations = block.get("relations") or {}
+        parts = [events_block]
+        for subkey, header in sections:
+            triples = relations.get(subkey) or []
+            parts.append(linearize_relations_hybrid(triples, header, event_lookup))
+        block["linearized"] = "".join(parts)
+
+    return out
+
+
 import argparse
 import json
 import os
@@ -81,7 +135,8 @@ def _stream_linearize(in_path: Path, out_path: Path) -> int:
             if not line:
                 continue
             row = json.loads(line)
-            new_row = linearize_row(row)
+            # new_row = linearize_row(row)  # original: bare-id endpoints, e.g. (e2, BEFORE, e1)
+            new_row = linearize_row_hybrid(row)  # hybrid: (e2:left|Departing, BEFORE, e1:arrived|Arriving)
             fout.write(json.dumps(new_row, ensure_ascii=False) + "\n")
             n += 1
     return n
