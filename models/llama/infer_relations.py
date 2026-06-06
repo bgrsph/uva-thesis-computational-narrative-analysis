@@ -64,11 +64,37 @@ def run_inference(args: argparse.Namespace) -> int:
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
-    with args.input.open("r", encoding="utf-8") as fin, args.output.open("w", encoding="utf-8") as fout:
+    # Resume: if the output already holds rows from a prior run that crashed or
+    # timed out, skip the inputs already processed and append. Keyed on
+    # (wikidata_id, summary_id). Any trailing partial/corrupt line is truncated
+    # so appended rows stay parseable. No flag needed: empty/absent output =
+    # fresh run (write mode). Decoding is deterministic, so a skipped row would
+    # reproduce exactly — skipping loses nothing.
+    done_keys: set[tuple] = set()
+    if args.output.exists():
+        valid_bytes = 0
+        with args.output.open("rb") as fprev:
+            for raw in fprev:
+                try:
+                    prev = json.loads(raw)
+                except json.JSONDecodeError:
+                    break   # first corrupt/partial line — truncate from here
+                if isinstance(prev, dict):
+                    done_keys.add((prev.get("wikidata_id"), prev.get("summary_id")))
+                valid_bytes += len(raw)
+        with args.output.open("r+b") as fprev:
+            fprev.truncate(valid_bytes)   # drop any partial trailing write
+    if done_keys:
+        print(f"resume: {len(done_keys)} rows already in {args.output.name}; skipping them", flush=True)
+
+    mode = "a" if done_keys else "w"
+    with args.input.open("r", encoding="utf-8") as fin, args.output.open(mode, encoding="utf-8") as fout:
         for i, line in enumerate(fin):
             if args.sample_size is not None and i >= args.sample_size:
                 break
             row = json.loads(line)
+            if (row.get("wikidata_id"), row.get("summary_id")) in done_keys:
+                continue   # already processed in a prior run — skip
             annotated = inline_events(row["sentences"], row["events"])
             messages = build_chat_messages(cfg, annotated)
 

@@ -27,8 +27,9 @@ def load_prompt_config(condition: str) -> dict:
 def parse_and_validate(out_str: str, cfg: dict, condition: str) -> dict:
     """Parse the model's raw output and validate label / eID shape.
 
-    Returns the cleaned dict of per-section relation lists. Relations with
-    unknown labels or malformed eIDs are silently dropped; the verbatim Llama
+    Returns the cleaned dict of per-section relation lists. Relations that are
+    malformed in shape (not an object, missing `relation`/`source`/`target`,
+    unknown label, or malformed eID) are silently dropped; the verbatim Llama
     output is preserved in `condition_block.response_raw` so anyone wanting
     to recover them can re-parse from there. UNI-65 Option A.
 
@@ -49,16 +50,20 @@ def parse_and_validate(out_str: str, cfg: dict, condition: str) -> dict:
 
     for cur_idx, (json_key, _) in enumerate(sections):
         for rel in parsed.get(json_key, []):
-            label = rel["relation"]
+            if not isinstance(rel, dict):
+                continue   # malformed entry (not an object) — silent drop
+            label = rel.get("relation")
             target_idx = cur_idx if label in section_allowed[cur_idx] else next(
                 (i for i, allowed in enumerate(section_allowed)
                  if i != cur_idx and label in allowed),
                 None,
             )
             if target_idx is None:
-                continue   # unknown label — silent drop; response_raw is the audit trail
-            if any(not RE_EID.match(rel[end]) for end in ("source", "target")):
-                continue   # bad eID — same
+                continue   # unknown/missing label — silent drop; response_raw is the audit trail
+            src, tgt = rel.get("source"), rel.get("target")
+            if not (isinstance(src, str) and isinstance(tgt, str)
+                    and RE_EID.match(src) and RE_EID.match(tgt)):
+                continue   # missing or malformed eID — same
             out[sections[target_idx][0]].append(rel)
 
     return out
