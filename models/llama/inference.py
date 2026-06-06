@@ -40,16 +40,24 @@ def parse_and_validate(out_str: str, cfg: dict, condition: str) -> dict:
     section condition.)
 
     Raises:
-        json.JSONDecodeError: output is not valid JSON (the only hard-fail
-            mode — everything past JSON parse is recoverable).
+        json.JSONDecodeError: output is not valid JSON.
+        ValueError: valid JSON but the top level is not an object.
+        Both are caught by `build_run_row` (whose `except` is broad), recorded
+        as `parse_error`, and the row is kept with `relations=None` — so no
+        malformed model output can ever crash the batch.
     """
     parsed = json.loads(out_str)
+    if not isinstance(parsed, dict):
+        raise ValueError(f"top-level JSON is {type(parsed).__name__}, expected an object")
     sections = CONDITION_KEYS[condition]
     section_allowed = [set(cfg[label_field]) for _, label_field in sections]
     out: dict[str, list[dict]] = {json_key: [] for json_key, _ in sections}
 
     for cur_idx, (json_key, _) in enumerate(sections):
-        for rel in parsed.get(json_key, []):
+        rels = parsed.get(json_key)
+        if not isinstance(rels, list):
+            continue   # section missing / null / wrong-typed — no relations of this type
+        for rel in rels:
             if not isinstance(rel, dict):
                 continue   # malformed entry (not an object) — silent drop
             label = rel.get("relation")
@@ -93,7 +101,8 @@ def build_run_row(
 
     Returns a row whether or not parsing succeeded.
 
-    - JSON-parse failure (the only hard-fail): populates `parse_error`, leaves
+    - Any parse failure (invalid JSON, non-object top level, or any other
+      malformed-output error): populates `parse_error`, leaves
       `response_parsed` / `relations` as None. `response_raw` still verbatim.
     - Per-relation validation issues (bad labels, bad eIDs): silently dropped
       in `parse_and_validate`; the valid relations survive. `parse_error` is
@@ -102,7 +111,7 @@ def build_run_row(
     try:
         parsed = parse_and_validate(response_raw, cfg, condition)
         parse_error = None
-    except json.JSONDecodeError as e:
+    except Exception as e:   # ANY malformed model output is recoverable — never crash the batch
         parsed = None
         parse_error = f"{type(e).__name__}: {e}"
 
