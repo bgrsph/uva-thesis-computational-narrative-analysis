@@ -1,14 +1,6 @@
-"""Standalone CLI mirror of notebook §4 cells 3–5.
 
-Reuses the pure helpers in models/llama/inference.py end-to-end. The notebook
-remains the local-MPS validation path; this script is the cluster-execution
-path (invoked by models/llama/infer_relations.sbatch).
-
-See spec: docs/superpowers/specs/2026-05-11-snellius-cluster-execution-design.md
-Linear: UNI-66.
-"""
+# Import necessary libraries and functions
 from __future__ import annotations
-
 import argparse
 import json
 from pathlib import Path
@@ -21,16 +13,13 @@ from models.llama.inference import (
     load_prompt_config,
 )
 
+# Define all conditions that require LLM call. Note that indepdently merged temporal+causal does not require LLM call, it's merged from temporal and causal results post-hoc. 
 VALID_CONDITIONS = ("temporal", "causal", "temporal_causal_joint")
+LLAMA_MODEL_ID = "meta-llama/Meta-Llama-3-8B-Instruct"              # Full official name of the model
+LLAMA_DO_SAMPLE = False                                             # For deterministic results
+LLAMA_CTX = 8192                                                    # Llama-3-8B architectural context window
 
-LLAMA_MODEL_ID = "meta-llama/Meta-Llama-3-8B-Instruct"
-LLAMA_DO_SAMPLE = False
-# Llama-3-8B architectural ctx window; input + output cannot exceed this.
-# We let max_new_tokens float per-row as `LLAMA_CTX - n_input` to leave no
-# generation budget on the table — see UNI-52 audit.
-LLAMA_CTX = 8192
-
-
+# Parse arguments for the python script
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description="Llama-3-8B relation annotation over BERT+CRF event-tagged jsonl.")
     ap.add_argument("--input",       required=True, type=Path, help="jsonl produced by infer_tma.py")
@@ -43,11 +32,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def _build_pipeline(model_id: str):
-    """Build the transformers text-generation pipeline. Isolated so tests can monkeypatch it."""
-    import transformers  # local import; keeps argparse-only paths free of torch/transformers.
+    """Build the transformers text-generation pipeline."""
+    import transformers
     from dotenv import load_dotenv
 
-    load_dotenv()   # picks up HF_TOKEN from .env if present; harmless if env already exports it.
+    load_dotenv()   # picks up HF_TOKEN from .env if present, though we use HF login in this experiment. 
     return transformers.pipeline(
         "text-generation",
         model=model_id,
@@ -60,16 +49,15 @@ def run_inference(args: argparse.Namespace) -> int:
     cfg = load_prompt_config(args.condition)
     pipe = _build_pipeline(LLAMA_MODEL_ID)
     tok = pipe.tokenizer
-    terminators = [tok.eos_token_id, tok.convert_tokens_to_ids("<|eot_id|>")]
+    terminators = [tok.eos_token_id, tok.convert_tokens_to_ids("<|eot_id|>")]   # stop at end-of-text or Llama-3 end-of-turn
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     # Resume: if the output already holds rows from a prior run that crashed or
-    # timed out, skip the inputs already processed and append. Keyed on
-    # (wikidata_id, summary_id). Any trailing partial/corrupt line is truncated
-    # so appended rows stay parseable. No flag needed: empty/absent output =
-    # fresh run (write mode). Decoding is deterministic, so a skipped row would
-    # reproduce exactly — skipping loses nothing.
+    # timed out, skip the inputs already processed and append. 
+    # We use the key: (wikidata_id, summary_id).
+    # Any trailing partial/corrupt line is truncated so appended rows stay parseable. 
+    # Decoding is deterministic, so a skipped row would reproduce exactly. 
     done_keys: set[tuple] = set()
     if args.output.exists():
         valid_bytes = 0
@@ -87,7 +75,7 @@ def run_inference(args: argparse.Namespace) -> int:
     if done_keys:
         print(f"resume: {len(done_keys)} rows already in {args.output.name}; skipping them", flush=True)
 
-    mode = "a" if done_keys else "w"
+    mode = "a" if done_keys else "w"   # append when resuming a prior run, else write a fresh file
     with args.input.open("r", encoding="utf-8") as fin, args.output.open(mode, encoding="utf-8") as fout:
         for i, line in enumerate(fin):
             if args.sample_size is not None and i >= args.sample_size:
@@ -97,11 +85,10 @@ def run_inference(args: argparse.Namespace) -> int:
                 continue   # already processed in a prior run — skip
             annotated = inline_events(row["sentences"], row["events"])
             messages = build_chat_messages(cfg, annotated)
-
             prompt_str = tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
             n_input = len(tok.encode(prompt_str, add_special_tokens=False))
-
-            max_new = LLAMA_CTX - n_input
+            max_new = LLAMA_CTX - n_input   # tokens left in the context window for the response
+            
             if max_new <= 0:
                 print(f"row {i}: skipping — input alone exceeds ctx "
                       f"(n_input={n_input} >= {LLAMA_CTX})", flush=True)
@@ -125,6 +112,7 @@ def run_inference(args: argparse.Namespace) -> int:
                 fout.write(json.dumps(overflow_row) + "\n")
                 continue
 
+            # Run the model with greedy, deterministic decoding, stopping at the terminators.
             outputs = pipe(
                 messages,
                 max_new_tokens=max_new,
@@ -132,10 +120,12 @@ def run_inference(args: argparse.Namespace) -> int:
                 eos_token_id=terminators,
                 pad_token_id=tok.eos_token_id,
             )
+            # Take the assistant's reply text and count its output tokens.
             out_str = outputs[0]["generated_text"][-1]["content"]
             n_output = len(tok.encode(out_str, add_special_tokens=False))
             print(f"row {i}: input_tokens={n_input} output_tokens={n_output}", flush=True)
 
+            # Parse and validate the reply into the output row (relations, parse status, token counts, metadata).
             out_row = build_run_row(
                 input_row=row,
                 condition=args.condition,
@@ -147,15 +137,16 @@ def run_inference(args: argparse.Namespace) -> int:
                 max_new_tokens=max_new,
                 cfg=cfg,
             )
+            # Report any parse failure, then append the row to the output file.
             if out_row["condition_block"]["parse_error"]:
                 print(f"row {i}: {out_row['condition_block']['parse_error']}", flush=True)
             fout.write(json.dumps(out_row) + "\n")
     return 0
 
-
+# Define the run
 def main(argv: Sequence[str] | None = None) -> int:
     return run_inference(parse_args(argv))
 
 
-if __name__ == "__main__":  # pragma: no cover
+if __name__ == "__main__":
     raise SystemExit(main())
