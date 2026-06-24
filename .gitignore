@@ -197,7 +197,21 @@ cython_debug/
 .pypirc
 
 
-data/
+# data/: publish the empty directory skeleton (via .gitkeep) but ignore all real data.
+data/*
+!data/experiments/
+!data/intermediate/
+!data/raw/
+!data/results/
+data/experiments/*
+data/intermediate/*
+data/raw/*
+data/results/*
+!data/experiments/.gitkeep
+!data/intermediate/.gitkeep
+!data/raw/.gitkeep
+!data/results/.gitkeep
+
 .DS_Store
 /docs/*
 /resources/*
