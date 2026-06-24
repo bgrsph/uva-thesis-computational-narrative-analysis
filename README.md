@@ -50,7 +50,7 @@ Each pass writes one `experiment.jsonl` under `data/experiments/<experiment_name
 ## Data and models
 
 - Tell Me Again! dataset: https://github.com/uhh-lt/tell-me-again (installed via `pip install tell_me_again`).
-- BERT+CRF event extractor, based on the MAVEN baseline: https://github.com/THU-KEG/MAVEN-dataset/tree/main/baselines/BERT+CRF (base model https://huggingface.co/bert-base-uncased).
+- BERT+CRF event extractor, based on the MAVEN baseline: https://github.com/THU-KEG/MAVEN-dataset/tree/main/baselines/BERT+CRF (base model https://huggingface.co/bert-base-uncased). The code in `models/bert_crf/` is the upstream baseline with a minimal edits to run on a modern arm64 (`transformers==4.18.0`, Python 3.9). Each change is annotated with a `# PATCHED:` comment (`grep -rn PATCHED models/bert_crf/`), and no training logic was changed.
 - Llama-3-8B-Instruct, relation inference: https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct (gated; requires access approval and a Hugging Face login).
 - E5-Mistral-7B-Instruct, encoder: https://huggingface.co/intfloat/e5-mistral-7b-instruct
 - Qwen3-Embedding-0.6B, encoder: https://huggingface.co/Qwen/Qwen3-Embedding-0.6B
