@@ -4,6 +4,11 @@ from __future__ import annotations
 
 import copy
 
+import argparse
+import json
+import os
+from pathlib import Path
+from typing import Sequence
 
 def linearize_events(events: list[dict]) -> str:
     """Format events in textual order as space-joined `(eID|trigger|EVENT_TYPE)` units.
@@ -64,7 +69,7 @@ def linearize_row(row: dict) -> dict:
     return out
 
 
-# --- Hybrid variant: relation endpoints carry their surface form -------------
+# Hybrid linearization variant: relation endpoints carry their surface form
 # The original `linearize_relations` renders endpoints as bare ids, e.g.
 # `(e2, BEFORE, e1)`. The hybrid form below renders each endpoint as
 # `eID:trigger|EVENT_TYPE`, e.g. `(e2:left|Departing, BEFORE, e1:arrived|Arriving)`,
@@ -118,74 +123,7 @@ def linearize_row_hybrid(row: dict) -> dict:
     return out
 
 
-# --- No-id variant: drop event ids entirely ----------------------------------
-# Ablation counterpart to the hybrid form. Both the EVENTS block and the relation
-# endpoints omit the `eID`, rendering each as `trigger|EVENT_TYPE`, e.g.
-# `(transferred|Sending)` in EVENTS and `(transferred|Sending, BEFORE, receiving|Receiving)`
-# in relations. The id is still used to order events and sort relation triples; it
-# is simply never shown. This isolates the effect of exposing opaque id pointers to
-# the embedder while holding the pseudo-code structure (parens, pipes, triples) constant.
 
-def linearize_events_noid(events: list[dict]) -> str:
-    """Like `linearize_events`, but units are `(trigger|EVENT_TYPE)` with no
-    leading `eID|`. Events are still ordered by (sent_id, start); parens still
-    delimit units so triggers containing spaces stay unambiguous."""
-    units = []
-    for ev in sorted(events, key=lambda e: (e["sent_id"], e["start"])):
-        trigger = ev["trigger"]
-        event_type = ev["event_type"]
-        assert "|" not in trigger,    f"trigger contains '|': {trigger!r}"
-        assert "|" not in event_type, f"event_type contains '|': {event_type!r}"
-        units.append(f"({trigger}|{event_type})")
-    return " ".join(units)
-
-
-def linearize_relations_noid(triples: list[dict], header: str,
-                             event_lookup: dict) -> str:
-    """Like `linearize_relations_hybrid`, but each endpoint is rendered as
-    `trigger|EVENT_TYPE` with no leading `eID:`. Endpoints missing from
-    `event_lookup` fall back to the bare id. Sorting and empty-list behaviour
-    match `linearize_relations`."""
-    def render(eid: str) -> str:
-        info = event_lookup.get(eid)
-        if info is None:
-            return eid
-        trigger, event_type = info
-        return f"{trigger}|{event_type}"
-
-    parts = [f"{header}:\n"]
-    for t in sorted(triples, key=lambda r: (int(r["source"][1:]), int(r["target"][1:]))):
-        parts.append(f"({render(t['source'])}, {t['relation']}, {render(t['target'])})\n")
-    return "".join(parts)
-
-
-def linearize_row_noid(row: dict) -> dict:
-    """No-id counterpart of `linearize_row_hybrid`: both the EVENTS block and the
-    relation endpoints drop the `eID`, rendering everything as `trigger|EVENT_TYPE`.
-    Does not mutate `row`."""
-    out = copy.deepcopy(row)
-    events_block = f"EVENTS:\n{linearize_events_noid(out['events'])}\n"
-    event_lookup = _event_lookup(out["events"])
-
-    out["linearized_events_only"] = events_block
-
-    for condition, sections in _CONDITION_SPEC.items():
-        block = out["conditions"][condition]
-        relations = block.get("relations") or {}
-        parts = [events_block]
-        for subkey, header in sections:
-            triples = relations.get(subkey) or []
-            parts.append(linearize_relations_noid(triples, header, event_lookup))
-        block["linearized"] = "".join(parts)
-
-    return out
-
-
-import argparse
-import json
-import os
-from pathlib import Path
-from typing import Sequence
 
 
 def _stream_linearize(in_path: Path, out_path: Path) -> int:
@@ -199,10 +137,7 @@ def _stream_linearize(in_path: Path, out_path: Path) -> int:
                 continue
             row = json.loads(line)
 
-            # Comment out the linearization version you prefer:
-            # new_row = linearize_row(row)  # original: bare-id endpoints, e.g. (e2, BEFORE, e1)
-            new_row = linearize_row_hybrid(row)  # hybrid: (e2:left|Departing, BEFORE, e1:arrived|Arriving) (Thesis Version)
-            #new_row = linearize_row_noid(row)  # no-id: events (left|Departing); relations (left|Departing, BEFORE, arrived|Arriving) (Thesis Appendix Secondary Version)
+            new_row = linearize_row_hybrid(row)  # hybrid: (e2:left|Departing, BEFORE, e1:arrived|Arriving) (Thesis)
 
             fout.write(json.dumps(new_row, ensure_ascii=False) + "\n")
             n += 1
