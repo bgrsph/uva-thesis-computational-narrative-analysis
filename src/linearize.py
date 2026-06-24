@@ -1,9 +1,6 @@
-"""Canonical linearization of (events, relations) into one string per
-experimental condition. See docs/superpowers/specs/2026-05-19-uni-26-linearization-design.md (UNI-26)."""
+# Import libraries
 from __future__ import annotations
-
 import copy
-
 import argparse
 import json
 import os
@@ -11,8 +8,7 @@ from pathlib import Path
 from typing import Sequence
 
 def linearize_events(events: list[dict]) -> str:
-    """Format events in textual order as space-joined `(eID|trigger|EVENT_TYPE)` units.
-    Parens make unit boundaries unambiguous even when triggers contain spaces."""
+    """Format events in textual order as `(eID|trigger|EVENT_TYPE)` units."""
     units = []
     for ev in sorted(events, key=lambda e: (e["sent_id"], e["start"])):
         trigger = ev["trigger"]
@@ -24,8 +20,7 @@ def linearize_events(events: list[dict]) -> str:
 
 
 def linearize_relations(triples: list[dict], header: str) -> str:
-    """Sort triples by (int(src[1:]), int(tgt[1:])) and format under <HEADER>:.
-    Empty list still emits the header line."""
+    """Format relation triplets"""
     parts = [f"{header}:\n"]
     for t in sorted(triples, key=lambda r: (int(r["source"][1:]), int(r["target"][1:]))):
         parts.append(f"({t['source']}, {t['relation']}, {t['target']})\n")
@@ -45,13 +40,7 @@ _CONDITION_SPEC: dict[str, tuple[tuple[str, str], ...]] = {
 
 
 def linearize_row(row: dict) -> dict:
-    """Return a new row dict with the 5 linearized strings populated.
-
-    Does not mutate `row`. Reads relations from
-    `conditions[<cond>]["relations"][<subkey>]` per `_CONDITION_SPEC`.
-    A `parse_error != None` (or otherwise missing `relations`) on a condition
-    is treated as an empty relation list — the section header is still emitted.
-    """
+    """Return a new row dict with the 5 linearized strings populated. """
     out = copy.deepcopy(row)
     events_block = f"EVENTS:\n{linearize_events(out['events'])}\n"
 
@@ -72,10 +61,7 @@ def linearize_row(row: dict) -> dict:
 # Hybrid linearization variant: relation endpoints carry their surface form
 # The original `linearize_relations` renders endpoints as bare ids, e.g.
 # `(e2, BEFORE, e1)`. The hybrid form below renders each endpoint as
-# `eID:trigger|EVENT_TYPE`, e.g. `(e2:left|Departing, BEFORE, e1:arrived|Arriving)`,
-# so the embedder sees the surface trigger and type instead of an opaque pointer,
-# while the id still disambiguates repeated triggers. The EVENTS block and the
-# events-only condition are unchanged.
+# `eID:trigger|EVENT_TYPE`, e.g. `(e2:left|Departing, BEFORE, e1:arrived|Arriving)`.
 
 def _event_lookup(events: list[dict]) -> dict:
     """Map event_id -> (trigger, event_type) for hybrid relation linearization."""
@@ -85,9 +71,7 @@ def _event_lookup(events: list[dict]) -> dict:
 def linearize_relations_hybrid(triples: list[dict], header: str,
                                event_lookup: dict) -> str:
     """Like `linearize_relations`, but each endpoint is rendered as
-    `eID:trigger|EVENT_TYPE` instead of the bare `eID`. Endpoints missing from
-    `event_lookup` (e.g. an id the LLM emitted that is not in `events`) fall back
-    to the bare id. Sorting and empty-list behaviour match `linearize_relations`."""
+    `eID:trigger|EVENT_TYPE` instead of the bare `eID`."""
     def render(eid: str) -> str:
         info = event_lookup.get(eid)
         if info is None:
@@ -102,9 +86,7 @@ def linearize_relations_hybrid(triples: list[dict], header: str,
 
 
 def linearize_row_hybrid(row: dict) -> dict:
-    """Hybrid counterpart of `linearize_row`: relation endpoints carry their
-    trigger and event type (`eID:trigger|EVENT_TYPE`). The EVENTS block and the
-    events-only condition are identical to `linearize_row`. Does not mutate `row`."""
+    """Populate the linearized strings"""
     out = copy.deepcopy(row)
     events_block = f"EVENTS:\n{linearize_events(out['events'])}\n"
     event_lookup = _event_lookup(out["events"])
@@ -142,6 +124,7 @@ def _stream_linearize(in_path: Path, out_path: Path) -> int:
             fout.write(json.dumps(new_row, ensure_ascii=False) + "\n")
             n += 1
     return n
+
 
 
 def main(in_path: Path, inplace: bool) -> int:
