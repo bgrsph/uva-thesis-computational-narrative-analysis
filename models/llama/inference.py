@@ -1,4 +1,4 @@
-""" We infer the type of relationship between events in a given story, via LLama3"""
+""" We infer the type of relationship between events in a given story, via LLama3. """
 
 # Import libraries
 import json
@@ -17,37 +17,13 @@ CONDITION_KEYS: dict[str, list[tuple[str, str]]] = {
 
 
 def load_prompt_config(condition: str) -> dict:
-    """Load the prompt YAML for the given condition.
-
-    The YAMLs at `models/llama/prompts/*.yaml` are frozen per UNI-13;
-    a missing field surfaces as the caller's KeyError.
-    """
+    """Load the prompt YAML for the given condition."""
     path = Path(__file__).parent / "prompts" / f"{condition}.yaml"
     return yaml.safe_load(path.read_text())
 
 
 def parse_and_validate(out_str: str, cfg: dict, condition: str) -> dict:
-    """Parse the model's raw output and validate label / eID shape.
-
-    Returns the cleaned dict of per-section relation lists. Relations that are
-    malformed in shape (not an object, missing `relation`/`source`/`target`,
-    unknown label, or malformed eID) are silently dropped; the verbatim Llama
-    output is preserved in `condition_block.response_raw` so anyone wanting
-    to recover them can re-parse from there. UNI-65 Option A.
-
-    Section-mismatch recovery: for multi-section conditions, a relation whose
-    label is valid in *another* section of this condition's codebook is moved
-    to that section. (Single-section is what we have today; the reroute is
-    dead code under current `CONDITION_KEYS` but kept for a future multi-
-    section condition.)
-
-    Raises:
-        json.JSONDecodeError: output is not valid JSON.
-        ValueError: valid JSON but the top level is not an object.
-        Both are caught by `build_run_row` (whose `except` is broad), recorded
-        as `parse_error`, and the row is kept with `relations=None` — so no
-        malformed model output can ever crash the batch.
-    """
+    """Parse the model's raw output and validate label / eID shape. """
     parsed = json.loads(out_str)
     if not isinstance(parsed, dict):
         raise ValueError(f"top-level JSON is {type(parsed).__name__}, expected an object")
@@ -99,17 +75,7 @@ def build_run_row(
     max_new_tokens: int,
     cfg: dict,
 ) -> dict:
-    """Compose the per-condition row written by infer_relations.py.
-
-    Returns a row whether or not parsing succeeded.
-
-    - Any parse failure (invalid JSON, non-object top level, or any other
-      malformed-output error): populates `parse_error`, leaves
-      `response_parsed` / `relations` as None. `response_raw` still verbatim.
-    - Per-relation validation issues (bad labels, bad eIDs): silently dropped
-      in `parse_and_validate`; the valid relations survive. `parse_error` is
-      None — `response_raw` is the audit trail for what got dropped.
-    """
+    """Compose the per-condition row written by infer_relations.py. """
     try:
         parsed = parse_and_validate(response_raw, cfg, condition)
         parse_error = None
@@ -137,11 +103,7 @@ def build_run_row(
 
 
 def inline_events(sentences: list[str], events: list[dict]) -> str:
-    """Splice `[event_id|trigger|event_type]` markers into each sentence at the event spans.
-
-    Uses the `event_id` already assigned by the upstream BERT+CRF stage
-    (`models/bert_crf/infer_tma.py` assigns e1, e2, ... in document order).
-    """
+    """Splice `[event_id|trigger|event_type]` markers into each sentence at the event spans."""
     by_sent: dict[int, list[dict]] = {}
     for ev in events:
         by_sent.setdefault(ev["sent_id"], []).append(ev)
