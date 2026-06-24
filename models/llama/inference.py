@@ -1,10 +1,10 @@
-"""Pure logic for Llama-3 relation annotation. No torch / transformers imports at module level."""
+# Import libraries
 import json
 import re
 from pathlib import Path
-
 import yaml
 
+# Define the pattern
 RE_EID = re.compile(r"^e\d+$")
 
 CONDITION_KEYS: dict[str, list[tuple[str, str]]] = {
