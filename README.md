@@ -19,8 +19,7 @@ This repository contains the full pipeline for the thesis. It extracts events fr
 4. Relation annotation: Llama-3-8B zero-shot temporal, causal, and joint temporo-causal relations, followed by complete-case and hallucinated-relation filtering.
 5. Linearization: convert events and relations into one text string per condition, then drop summaries whose linearized form exceeds the embedder window.
 6. Embedding: encode every condition with E5-Mistral, Qwen3-0.6B, and StoryEmb.
-7. Baselines: BoW and TF-IDF over the full text and over the event triggers.
-8. Evaluation: retrieval metrics (P@1, Hits@10, R-Precision, MAP, NDCG), computed in a separate notebook.
+7. Evaluation (separate notebook): restrict both arms to the matched set, compute the BoW and TF-IDF lexical baselines (over the full text and over the event triggers) on that set, then retrieval metrics (P@1, Hits@10, R-Precision, MAP, NDCG).
 
 ## Environments
 
@@ -36,7 +35,7 @@ The notebooks are numbered in run order: `1.pipeline.ipynb`, then `2.evaluation.
 
 1. `notebooks/1.pipeline.ipynb`, run once per dataset arm, top to bottom:
    - Non-pseudonymized arm: run Section 2a only, then continue through the rest of the notebook.
-   - Pseudonymized arm: run Section 2a first, then Section 2b (Section 2b builds the pseudonymized counterpart of the Section 2a run), then continue through the rest of the notebook.
+   - Pseudonymized arm: run Section 2b only, then continue through the rest of the notebook.
 
    Each pass writes one `experiment.jsonl` under `data/experiments/<experiment_name>/`.
 2. `notebooks/2.evaluation.ipynb`, run once after both pipeline passes. It reads both experiment folders and produces the matched, side-by-side retrieval results.
@@ -46,8 +45,8 @@ The notebooks are numbered in run order: `1.pipeline.ipynb`, then `2.evaluation.
 
 ## Notebooks
 
-- `notebooks/1.pipeline.ipynb`: the main pipeline (steps 1 to 7 above), run once per arm.
-- `notebooks/2.evaluation.ipynb`: retrieval evaluation; reads both arms and produces the matched results tables. Run once, after both pipeline passes.
+- `notebooks/1.pipeline.ipynb`: the main pipeline (steps 1 to 6 above), run once per arm.
+- `notebooks/2.evaluation.ipynb`: retrieval evaluation; reads both arms, restricts them to the matched set, computes the BoW/TF-IDF lexical baselines on that set, and produces the matched results tables. Run once, after both pipeline passes.
 - `notebooks/3.error_analysis.ipynb`: diagnostic analyses of the retrieval errors and of the inferred relation structure. Run after `2.evaluation.ipynb`.
 - `notebooks/manual_annotation.ipynb`: manual evaluation of the BERT+CRF event extraction on a sample of summaries (trigger identification and event-type classification). Needs only the event output from `1.pipeline.ipynb`.
 - `notebooks/eda.ipynb`: exploratory data analysis of MAVEN and Tell Me Again! (corpus statistics, token counts, event-count thresholds) that motivates the subsetting choices. Standalone.
