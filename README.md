@@ -32,20 +32,25 @@ The project uses three Python environments. The pipeline notebook documents the 
 
 ## How to run
 
-Run `notebooks/pipeline.ipynb` once per dataset arm, top to bottom:
+The notebooks are numbered in run order: `1.pipeline.ipynb`, then `2.evaluation.ipynb`, then the diagnostics. In detail:
 
-- Non-pseudonymized arm: run Section 2a only, then continue through the rest of the notebook.
-- Pseudonymized arm: run Section 2a first, then Section 2b (Section 2b builds the pseudonymized counterpart of the Section 2a run), then continue through the rest of the notebook.
+1. `notebooks/1.pipeline.ipynb`, run once per dataset arm, top to bottom:
+   - Non-pseudonymized arm: run Section 2a only, then continue through the rest of the notebook.
+   - Pseudonymized arm: run Section 2a first, then Section 2b (Section 2b builds the pseudonymized counterpart of the Section 2a run), then continue through the rest of the notebook.
 
-Each pass writes one `experiment.jsonl` under `data/experiments/<experiment_name>/`. After both passes, run `notebooks/Evaluation.ipynb` once: it reads both folders and produces the matched, side-by-side results.
+   Each pass writes one `experiment.jsonl` under `data/experiments/<experiment_name>/`.
+2. `notebooks/2.evaluation.ipynb`, run once after both pipeline passes. It reads both experiment folders and produces the matched, side-by-side retrieval results.
+3. Diagnostics, run after the steps above and independent of each other (either order):
+   - `notebooks/3.error_analysis.ipynb` reads the evaluation outputs, so run it after `2.evaluation.ipynb`.
+   - `notebooks/manual_annotation.ipynb` needs only the event-extraction output from `1.pipeline.ipynb`.
 
 ## Notebooks
 
-- `notebooks/pipeline.ipynb`: the main pipeline (steps 1 to 7 above), run once per arm.
-- `notebooks/Evaluation.ipynb`: retrieval evaluation; reads both arms and produces the matched results tables. Run once, after both pipeline passes.
-- `notebooks/eda.ipynb`: exploratory data analysis of MAVEN and Tell Me Again! (corpus statistics, token counts, event-count thresholds) that motivates the subsetting choices.
-- `notebooks/manual_annotation.ipynb`: manual evaluation of the BERT+CRF event extraction on a sample of summaries (trigger identification and event-type classification).
-- `notebooks/error_analysis.ipynb`: diagnostic analyses of the retrieval errors and of the inferred relation structure.
+- `notebooks/1.pipeline.ipynb`: the main pipeline (steps 1 to 7 above), run once per arm.
+- `notebooks/2.evaluation.ipynb`: retrieval evaluation; reads both arms and produces the matched results tables. Run once, after both pipeline passes.
+- `notebooks/3.error_analysis.ipynb`: diagnostic analyses of the retrieval errors and of the inferred relation structure. Run after `2.evaluation.ipynb`.
+- `notebooks/manual_annotation.ipynb`: manual evaluation of the BERT+CRF event extraction on a sample of summaries (trigger identification and event-type classification). Needs only the event output from `1.pipeline.ipynb`.
+- `notebooks/eda.ipynb`: exploratory data analysis of MAVEN and Tell Me Again! (corpus statistics, token counts, event-count thresholds) that motivates the subsetting choices. Standalone.
 
 ## Data and models
 
