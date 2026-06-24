@@ -143,6 +143,8 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+models/bert_crf/.venv-maven-train
+
 
 # Spyder project settings
 .spyderproject
@@ -194,31 +196,14 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-# Cursor
-#  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
-#  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
-#  refer to https://docs.cursor.com/context/ignore-files
-.cursorignore
-.cursorindexingignore
-
-# Marimo
-marimo/_static/
-marimo/_lsp/
-__marimo__/
-
 
 data/
-
 .DS_Store
-
 /docs/*
-
 /resources/*
 
 .claude/*
 .venv-maven-train/
-models/bert_crf/tests
-src/tests/*
-conftest.py
-models/embed/tests/*
-models/llama/tests/*
+
+
+/notebooks/eda.ipynb
