@@ -1,14 +1,6 @@
-"""BERT+CRF event extraction over the TMA subset (UNI-23).
+"""BERT+CRF event extraction over the TMA subset """
 
-Run via the colocated venv:
-
-    models/bert_crf/.venv-maven-train/bin/python models/bert_crf/infer_tma.py \\
-        --input      data/intermediate/tma_subset.jsonl \\
-        --output     data/intermediate/tma_subset_events.jsonl \\
-        --checkpoint data/intermediate/models/bert_crf
-"""
 from __future__ import annotations
-
 import argparse
 import json
 import sys
@@ -151,10 +143,9 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    # Imports here so `--help` and the unit tests don't pay for them.
+    # Imports here to save up unit testing time
     import torch
-    # BertTokenizerFast is required for return_offsets_mapping; the slow Python
-    # tokenizer raises NotImplementedError. Fast tokenizer is built from vocab.txt.
+    # BertTokenizerFast is required for return_offsets_mapping
     from transformers import BertConfig, BertTokenizerFast
 
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -167,8 +158,11 @@ def main() -> int:
     labels = get_labels("")           # canonical 337-element list
     if len(labels) != 337:
         raise RuntimeError(f"expected 337 labels, got {len(labels)}")
+        
+    # Map model output indices back to their BIO label strings.
     id2label = {i: lbl for i, lbl in enumerate(labels)}
 
+    # Load the trained tokenizer and BERT+CRF checkpoint, then put the model in eval mode on the device.
     config = BertConfig.from_pretrained(str(args.checkpoint), num_labels=len(labels))
     tokenizer = BertTokenizerFast.from_pretrained(str(args.checkpoint), do_lower_case=True)
     model = BertCRFForTokenClassification.from_pretrained(str(args.checkpoint), config=config)
@@ -184,10 +178,12 @@ def main() -> int:
         total_rows = min(total_rows, args.sample_size)
         print(f"[infer_tma] sample-size={args.sample_size}  processing {total_rows} rows", flush=True)
 
+    # Running totals and start time for the progress/ETA logging below.
     n_in = n_events = 0
     t0 = time.time()
     PROGRESS_EVERY = 500
 
+    # Format a duration in seconds as a compact "Hh MMm SSs" string.
     def fmt_secs(s: float) -> str:
         s = int(s)
         h, s = divmod(s, 3600)
@@ -210,10 +206,12 @@ def main() -> int:
             # give the CRF a zero-length sequence and crash). Surviving sentences
             # keep their original sent_id via the (sent_id, text) pairs.
             indexed = indexed_nonempty_sentences(sentences)
+            # Tag the sentences in batches of args.batch_size.
             for batch_start in range(0, len(indexed), args.batch_size):
                 chunk    = indexed[batch_start : batch_start + args.batch_size]
                 sent_ids = [sid for sid, _ in chunk]
                 batch    = [txt for _, txt in chunk]
+                # Tokenize the batch; offsets map each sub-word back to its character span.
                 enc = tokenizer(
                     batch,
                     return_offsets_mapping=True,
@@ -227,6 +225,7 @@ def main() -> int:
                         f"sentence in {row['wikidata_id']}/{row['summary_id']} exceeds 128 subwords; "
                         "post-§2 filter should have prevented this"
                     )
+                # Per-sentence sub-word/word mapping, char offsets, and attention mask, kept for decoding.
                 word_ids_list = [enc.word_ids(b) for b in range(len(batch))]
                 offsets_list  = enc.pop("offset_mapping").tolist()
                 attn_list     = enc["attention_mask"].tolist()
@@ -264,6 +263,7 @@ def main() -> int:
                     sent_id  = sent_ids[off_in_batch]
                     sent     = sentences[sent_id]
                     word_tags, word_offsets = words_from_subwords(wids[:n], off[:n], bio_tags)
+                    # Turn the decoded word tags into trigger char-spans and record one event per span.
                     for (s, e, etype) in bio_to_spans(word_tags, word_offsets):
                         events.append({
                             "event_id":   f"e{len(events) + 1}",
@@ -278,6 +278,7 @@ def main() -> int:
             fout.write(json.dumps(row, ensure_ascii=False) + "\n")
             n_in += 1
             n_events += len(events)
+            # Every PROGRESS_EVERY summaries (and at the end), log throughput and an ETA.
             if n_in % PROGRESS_EVERY == 0 or n_in == total_rows:
                 now     = time.time()
                 elapsed = now - t0
