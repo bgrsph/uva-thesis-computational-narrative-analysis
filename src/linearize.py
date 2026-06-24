@@ -1,3 +1,5 @@
+"""Linearize the events and relationships with a hybrid pseudo-code format:"""
+
 # Import libraries
 from __future__ import annotations
 import copy
@@ -58,11 +60,6 @@ def linearize_row(row: dict) -> dict:
     return out
 
 
-# Hybrid linearization variant: relation endpoints carry their surface form
-# The original `linearize_relations` renders endpoints as bare ids, e.g.
-# `(e2, BEFORE, e1)`. The hybrid form below renders each endpoint as
-# `eID:trigger|EVENT_TYPE`, e.g. `(e2:left|Departing, BEFORE, e1:arrived|Arriving)`.
-
 def _event_lookup(events: list[dict]) -> dict:
     """Map event_id -> (trigger, event_type) for hybrid relation linearization."""
     return {ev["event_id"]: (ev["trigger"], ev["event_type"]) for ev in events}
@@ -103,7 +100,6 @@ def linearize_row_hybrid(row: dict) -> dict:
         block["linearized"] = "".join(parts)
 
     return out
-
 
 
 

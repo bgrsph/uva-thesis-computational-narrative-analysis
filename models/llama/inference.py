@@ -1,3 +1,5 @@
+""" We infer the type of relationship between events in a given story, via LLama3"""
+
 # Import libraries
 import json
 import re

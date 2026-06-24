@@ -1,3 +1,6 @@
+"""Each embedding result is merged and written into experiment.jsonl, since intermediary embedding results might be needed in the future. """
+
+
 # Import necessary libraries
 from __future__ import annotations
 import argparse

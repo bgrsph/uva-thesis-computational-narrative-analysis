@@ -1,3 +1,5 @@
+"""Here, we build the experiment.jsonl file that's going to be used throughout the pipeline, as the single source of truth per experiment"""
+
 # Import necessary libraries
 from __future__ import annotations
 import argparse
