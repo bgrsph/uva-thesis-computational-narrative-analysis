@@ -211,6 +211,13 @@ data/results/*
 !data/intermediate/.gitkeep
 !data/raw/.gitkeep
 !data/results/.gitkeep
+# keep the MAVEN and TellMeAgain folder skeletons under data/raw/ (still ignore the data inside)
+!data/raw/MAVEN/
+data/raw/MAVEN/*
+!data/raw/MAVEN/.gitkeep
+!data/raw/TellMeAgain/
+data/raw/TellMeAgain/*
+!data/raw/TellMeAgain/.gitkeep
 
 .DS_Store
 /docs/*
