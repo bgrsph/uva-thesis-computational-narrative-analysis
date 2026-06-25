@@ -11,6 +11,53 @@ MSc thesis, Information Studies (Data Science), University of Amsterdam.
 
 This repository contains the full pipeline for the thesis. It extracts events from narrative summaries with a supervised BERT+CRF model, infers temporal and causal relations between those events with Llama-3-8B, linearizes the result into text, embeds it, and evaluates narrative-similarity retrieval on the Tell Me Again! dataset. The evaluation compares event-based and relation-enriched representations against lexical and dense baselines, on both a non-pseudonymized and a pseudonymized version of the corpus.
 
+## Setup
+
+Complete these steps once before running the notebooks. The pipeline notebook (`notebooks/1.pipeline.ipynb`) repeats the per-step details; this is the consolidated checklist.
+
+1. **Create the three Python environments** (see Environments below for what each is for):
+   - Pipeline (`venv/`, Python 3.14, your machine) — the notebooks and every local step:
+     ```bash
+     python3 -m venv venv                 # this thesis used Python 3.14.5
+     source venv/bin/activate
+     pip install --upgrade pip
+     pip install -r requirements.txt
+     ```
+   - BERT+CRF (`models/bert_crf/.venv-maven-train`, Python 3.9, your machine) — only BERT+CRF training and event extraction:
+     ```bash
+     cd models/bert_crf
+     /usr/bin/python3 -m venv .venv-maven-train    # must be Python 3.9.x
+     source .venv-maven-train/bin/activate
+     pip install --upgrade pip
+     pip install -r requirements.txt
+     deactivate && cd ../..
+     ```
+   - Cluster (`.venv/`, on the Snellius HPC login node) — only the cluster option of the Llama and embedding steps. Same as the pipeline env but named `.venv`:
+     ```bash
+     python3 -m venv .venv
+     source .venv/bin/activate
+     pip install --upgrade pip
+     pip install -r requirements.txt
+     ```
+
+2. **Download the MAVEN dataset** (event-detection training data) from https://github.com/THU-KEG/MAVEN-dataset and place the splits under `data/raw/MAVEN/`:
+   ```
+   data/raw/MAVEN/{train.jsonl, valid.jsonl, test.jsonl}
+   ```
+
+3. **Download the Tell Me Again! dataset zip** from https://github.com/uhh-lt/tell-me-again and place it at exactly:
+   ```
+   data/raw/TellMeAgain/tell_me_again_v1.zip
+   ```
+   The pipeline uses both the `tell_me_again` package (installed via `requirements.txt`) and this zip: the package's `StoryDataset` parses the zip at the path above.
+
+4. **Request access to Llama-3-8B-Instruct** (gated) on its model page and wait for approval — this is not instant, so do it early: https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct
+
+5. **After approval, log in to Hugging Face** from the terminal, in every environment that runs Llama inference — your local `venv` and the cluster `.venv` (on the Snellius login node):
+   ```bash
+   hf auth login    # paste a read-scope token from https://huggingface.co/settings/tokens
+   ```
+
 ## Pipeline steps
 
 1. Event detection (MAVEN): train a BERT+CRF event extractor on the MAVEN corpus.
@@ -53,7 +100,7 @@ The notebooks are numbered in run order: `1.pipeline.ipynb`, then `2.evaluation.
 
 ## Data and models
 
-- Tell Me Again! dataset: https://github.com/uhh-lt/tell-me-again (installed via `pip install tell_me_again`).
+- Tell Me Again! dataset: https://github.com/uhh-lt/tell-me-again — used via both the `tell_me_again` package (installed from `requirements.txt`) and the `tell_me_again_v1.zip` download placed at `data/raw/TellMeAgain/` (see Setup).
 - MAVEN dataset (event-detection training data): https://github.com/THU-KEG/MAVEN-dataset — download the splits and place `train.jsonl`, `valid.jsonl`, `test.jsonl` under `data/raw/MAVEN/`.
 - BERT+CRF event extractor, based on the MAVEN baseline: https://github.com/THU-KEG/MAVEN-dataset/tree/main/baselines/BERT+CRF (base model https://huggingface.co/bert-base-uncased). The code in `models/bert_crf/` is the upstream baseline with a minimal edits to run on a modern arm64 (`transformers==4.18.0`, Python 3.9). Each change is annotated with a `# PATCHED:` comment (`grep -rn PATCHED models/bert_crf/`), and no training logic was changed.
 - Llama-3-8B-Instruct, relation inference: https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct (gated; requires access approval and a Hugging Face login).
