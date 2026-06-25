@@ -23,10 +23,16 @@ This repository contains the full pipeline for the thesis. It extracts events fr
 ## Setup
 
 Complete these steps once before running the notebooks. You could either do it from here, or the pipeline notebook (`notebooks/1.pipeline.ipynb`) demonstrates these steps when they are relevant: 
+0. **Clone the repository** onto both your local machine and the Snellius cluster login node:
+   ```bash
+   git clone https://github.com/bgrsph/uva-thesis-computational-narrative-analysis.git
+   cd uva-thesis-computational-narrative-analysis
+   ```
+
 1. **Create the three Python environments**:
    - Pipeline (`venv/`, Python 3.14, local machine) — the notebooks and every local step:
      ```bash
-     python3 -m venv venv                 # this thesis used Python 3.14.5
+     python3 -m venv venv                           # this thesis used Python 3.14.5
      source venv/bin/activate
      pip install --upgrade pip
      pip install -r requirements.txt
@@ -43,7 +49,7 @@ Complete these steps once before running the notebooks. You could either do it f
 
    - Cluster (`.venv/`, on the Snellius HPC login node) — only the cluster option of the Llama and embedding steps. Same as the pipeline env but named `.venv`:
      ```bash
-     python3 -m venv .venv
+     python3 -m venv .venv                         # Python 3.13.5 was present and used in cluster
      source .venv/bin/activate
      pip install --upgrade pip
      pip install -r requirements.txt
@@ -72,9 +78,9 @@ Complete these steps once before running the notebooks. You could either do it f
 
 The notebooks are numbered in run order: `1.pipeline.ipynb`, then `2.evaluation.ipynb`, then the diagnostics. In detail:
 
-1. `notebooks/1.pipeline.ipynb`, run once per dataset arm, top to bottom:
-   - Non-pseudonymized arm: run Section 2a only, then continue through the rest of the notebook.
-   - Pseudonymized arm: run Section 2b only, then continue through the rest of the notebook.
+1. `notebooks/1.pipeline.ipynb`, run once per dataset arm. Each pass runs the whole notebook top to bottom; the only thing that changes between arms is which cell you run in Section 2:
+   - Non-pseudonymized arm: in Section 2, run 2a and skip 2b.
+   - Pseudonymized arm: in Section 2, run 2b and skip 2a.
 
    Each pass writes one `experiment.jsonl` under `data/experiments/<experiment_name>/`.
 2. `notebooks/2.evaluation.ipynb`, run once after both pipeline passes. It reads both experiment folders and produces the matched, side-by-side retrieval results.
