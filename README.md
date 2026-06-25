@@ -23,13 +23,14 @@ This repository contains the full pipeline for the thesis. It extracts events fr
 ## Setup
 
 Complete these steps once before running the notebooks. You could either do it from here, or the pipeline notebook (`notebooks/1.pipeline.ipynb`) demonstrates these steps when they are relevant: 
-0. **Clone the repository** onto both your local machine and the Snellius cluster login node:
+
+1. **Clone the repository** onto both your local machine and the Snellius cluster login node:
    ```bash
    git clone https://github.com/bgrsph/uva-thesis-computational-narrative-analysis.git
    cd uva-thesis-computational-narrative-analysis
    ```
 
-1. **Create the three Python environments**:
+2. **Create the three Python environments**:
    - Pipeline (`venv/`, Python 3.14, local machine) — the notebooks and every local step:
      ```bash
      python3 -m venv venv                           # this thesis used Python 3.14.5
@@ -55,20 +56,20 @@ Complete these steps once before running the notebooks. You could either do it f
      pip install -r requirements.txt
      ```
 
-2. **Download the MAVEN dataset** (event-detection training data) from https://github.com/THU-KEG/MAVEN-dataset and place the splits under `data/raw/MAVEN/`:
+3. **Download the MAVEN dataset** (event-detection training data) from https://github.com/THU-KEG/MAVEN-dataset and place the splits under `data/raw/MAVEN/`:
    ```
    data/raw/MAVEN/{train.jsonl, valid.jsonl, test.jsonl}
    ```
 
-3. **Download the Tell Me Again! dataset zip** from https://github.com/uhh-lt/tell-me-again and place it at exactly:
+4. **Download the Tell Me Again! dataset zip** from https://github.com/uhh-lt/tell-me-again and place it at exactly:
    ```
    data/raw/TellMeAgain/tell_me_again_v1.zip
    ```
    The pipeline uses both the `tell_me_again` package (installed via `requirements.txt`) and this zip: the package's `StoryDataset` parses the zip at the path above.
 
-4. **Request access to Llama-3-8B-Instruct** (gated) on its model page and wait for approval. It might take few days: https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct
+5. **Request access to Llama-3-8B-Instruct** (gated) on its model page and wait for approval. It might take few days: https://huggingface.co/meta-llama/Meta-Llama-3-8B-Instruct
 
-5. **After approval, log in to Hugging Face** from the terminal, in every environment that runs Llama inference — your local `venv` and the cluster `.venv` (on the Snellius login node):
+6. **After approval, log in to Hugging Face** from the terminal, in every environment that runs Llama inference — your local `venv` and the cluster `.venv` (on the Snellius login node):
    ```bash
    hf auth login
    ```
